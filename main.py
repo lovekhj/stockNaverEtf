@@ -44,14 +44,18 @@ def show_interactive_menu():
     print("=" * 90)
     
     try:
-        user_input = input("👉 실행할 단계 번호를 입력하세요 (예: 1 / 4 / 1,2 / 0 / q:종료): ").strip()
+        user_input = input("👉 실행할 단계 번호를 입력하세요 [기본값: 4] (엔터 치면 4단계 / 0:전체 / q:종료): ").strip()
     except (KeyboardInterrupt, EOFError):
         print("\n[알림] 프로그램을 종료합니다.")
         sys.exit(0)
         
-    if not user_input or user_input.lower() in ('q', 'quit', 'exit'):
+    if user_input.lower() in ('q', 'quit', 'exit'):
         print("[알림] 프로그램을 종료합니다.")
         sys.exit(0)
+        
+    if not user_input or user_input == "4":
+        print("💡 기본값인 4단계(외국인/기관 수급 & 이동평균선 통합 분석)를 실행합니다.")
+        return {4}
         
     if user_input == "0" or user_input.lower() in ('all', 'a'):
         return {1, 2, 3, 4}
@@ -71,8 +75,8 @@ def show_interactive_menu():
                 steps.add(int(p))
                 
     if not steps:
-        print("⚠️ 잘못된 입력이거나 범위 미초과로 인해 1~4단계 전체 파이프라인을 실행합니다.")
-        return {1, 2, 3, 4}
+        print("💡 기본값인 4단계(외국인/기관 수급 & 이동평균선 통합 분석)를 실행합니다.")
+        return {4}
         
     return steps
 
@@ -81,7 +85,7 @@ def main():
         description="네이버 주식 ETF 주도주 수급 및 이동평균선(추세추종) 분석 파이프라인 통합 실행기"
     )
     parser.add_argument("--all", action="store_true", help="1~4단계 전체 파이프라인을 순차적으로 실행합니다.")
-    parser.add_argument("--step", type=str, help="실행할 단계 지정 (예: --step 1 또는 --step 4 또는 --step 1,2 또는 --step 1-4)")
+    parser.add_argument("--step", type=str, help="실행할 단계 지정 (예: --step 4 또는 --step 1,2 또는 --step 1-4)")
     
     # 각각의 실행구분 개별 옵션
     parser.add_argument("--step1", "--etf-list", action="store_true", help="1단계: ETF 전체 목록 수집 (getEtfList.py)")
@@ -123,11 +127,11 @@ def main():
     if not steps_to_run and sys.stdin.isatty() and len(sys.argv) == 1:
         steps_to_run = show_interactive_menu()
 
-    # 터미널이 아니거나 인자 없이 커맨드라인에서 실행할 경우 기본값 1~4 전체 실행
+    # 옵션 없이 실행할 경우 기본값 4단계(수급 & 이평선 분석) 실행
     if not steps_to_run:
-        print("💡 실행 옵션이 지정되지 않아 1~4단계 전체 파이프라인을 순차적으로 실행합니다.")
-        print("   (도움말 확인: python3 main.py --help)")
-        steps_to_run = {1, 2, 3, 4}
+        print("💡 실행 옵션이 지정되지 않아 기본값으로 4단계(외국인/기관 수급 & 이동평균선 통합 분석)를 실행합니다.")
+        print("   (전체 파이프라인 1~4단계 실행: python3 main.py --all)")
+        steps_to_run = {4}
 
     total_start = time.time()
     today_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
