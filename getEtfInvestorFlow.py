@@ -164,6 +164,106 @@ def determine_investment_grade(dual_buying, above_ma20, is_aligned):
     else:
         return "C"
 
+import glob
+
+def find_latest_previous_file(today_str):
+    """
+    현재 실행 날짜(today_str e.g. 20261003)보다 이전인 가장 최근의 분석 CSV 파일을 찾습니다.
+    """
+    analysis_folders = sorted(glob.glob("분석_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]"))
+    prev_files = []
+    for folder in analysis_folders:
+        folder_name = os.path.basename(folder)
+        date_part = folder_name.replace("분석_", "")
+        if date_part < today_str:
+            csv_path = os.path.join(folder, f"분석_{date_part}.csv")
+            if os.path.exists(csv_path):
+                prev_files.append((date_part, csv_path))
+    
+    if prev_files:
+        prev_files.sort(key=lambda x: x[0], reverse=True)
+        return prev_files[0][1]
+    
+    # 예전 통합 CSV 파일이 존재할 경우 fallback
+    if os.path.exists("data/etf_investor_flow.csv"):
+        return "data/etf_investor_flow.csv"
+    elif os.path.exists("etf_investor_flow.csv"):
+        return "etf_investor_flow.csv"
+        
+    return None
+
+def load_previous_analysis(prev_filepath):
+    """
+    이전 분석 CSV 파일에서 종목코드별 투자등급 및 수급/이평선 지표를 읽어와 딕셔너리로 반환합니다.
+    """
+    if not prev_filepath or not os.path.exists(prev_filepath):
+        return {}
+    
+    prev_map = {}
+    try:
+        with open(prev_filepath, "r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                code = row.get("종목코드", "").strip()
+                if code:
+                    prev_map[code] = {
+                        "투자등급": row.get("투자등급", "").strip(),
+                        "쌍끌이여부": row.get("쌍끌이여부", "").strip(),
+                        "20일선위": row.get("20일선위", "").strip(),
+                        "정배열여부": row.get("정배열여부", "").strip()
+                    }
+    except Exception as e:
+        print(f"[경고] 이전 분석 파일('{prev_filepath}') 로딩 실패: {e}")
+    return prev_map
+
+def compare_grade_change(prev_info, curr_grade, dual_buying, above_ma20, is_aligned):
+    """
+    이전 등급과 현재 등급을 비교하여 등급변동(예: A -> A+) 및 변동이유를 반환합니다.
+    """
+    if not prev_info:
+        return f"NEW ({curr_grade})", f"{curr_grade}등급 신규 포착"
+    
+    prev_grade = prev_info.get("투자등급", "")
+    if not prev_grade:
+        return f"NEW ({curr_grade})", f"{curr_grade}등급 신규 포착"
+    
+    if prev_grade == curr_grade:
+        return "-", "등급 유지"
+    
+    change_str = f"{prev_grade} -> {curr_grade}"
+    reasons = []
+    
+    prev_dual = prev_info.get("쌍끌이여부", "")
+    prev_ma20 = prev_info.get("20일선위", "")
+    prev_align = prev_info.get("정배열여부", "")
+
+    # 상향 원인
+    if is_aligned == "O" and prev_align != "O":
+        reasons.append("정배열 달성(5>=20>=60>=120일)")
+    if dual_buying == "O" and prev_dual != "O":
+        reasons.append("외인/기관 쌍끌이 순매수 유입")
+    if above_ma20 == "O" and prev_ma20 != "O":
+        reasons.append("20일선 위 가격 회복")
+    
+    # 하향 원인
+    if is_aligned != "O" and prev_align == "O":
+        reasons.append("이평선 정배열 이탈")
+    if dual_buying != "O" and prev_dual == "O":
+        reasons.append("쌍끌이 수급 이탈")
+    if above_ma20 != "O" and prev_ma20 == "O":
+        reasons.append("20일선 아래 가격 이탈")
+    
+    reason_str = ", ".join(reasons) if reasons else "수급 및 차트 조건 변경"
+    
+    grade_order = {"A+": 4, "A": 3, "B": 2, "C": 1}
+    prev_rank = grade_order.get(prev_grade, 0)
+    curr_rank = grade_order.get(curr_grade, 0)
+    
+    if curr_rank > prev_rank:
+        return f"{change_str} (상향)", reason_str
+    else:
+        return f"{change_str} (하향)", reason_str
+
 import os
 from datetime import datetime
 
@@ -172,10 +272,13 @@ def main():
     default_input = "data/etf_top_stocks.csv" if os.path.exists("data/etf_top_stocks.csv") else "etf_top_stocks.csv"
     default_save_dir = f"분석_{today_str}"
     default_save_csv = f"{default_save_dir}/분석_{today_str}.csv"
+    
+    auto_prev_csv = find_latest_previous_file(today_str)
 
     parser = argparse.ArgumentParser(description="ETF 주도주 외국인/기관 수급 및 이동평균선 분석 스크립트")
     parser.add_argument("--input-csv", type=str, default=default_input, help=f"입력 CSV 파일 경로 (기본값: {default_input})")
     parser.add_argument("--save-csv", type=str, default=default_save_csv, help=f"저장할 CSV 파일 경로 (기본값: {default_save_csv})")
+    parser.add_argument("--prev-csv", type=str, default=auto_prev_csv, help="이전 등급 비교용 CSV 파일 경로")
     parser.add_argument("--limit", type=int, default=0, help="분석할 주도주 수 제한 (0일 경우 전체)")
     parser.add_argument("--delay", type=float, default=0.01, help="요청 간 대기 시간(초) (기본값: 0.01초)")
     args = parser.parse_args()
@@ -189,6 +292,13 @@ def main():
         sys.exit(1)
 
     print(f"'{args.input_csv}' 파일에서 총 {len(stock_list)}개의 주도주 목록을 읽었습니다.")
+
+    if args.prev_csv:
+        print(f"이전 분석 데이터 비교 파일: '{args.prev_csv}'")
+        prev_map = load_previous_analysis(args.prev_csv)
+    else:
+        print("이전 분석 비교 파일이 존재하지 않아 신규 비교 모드로 진행합니다.")
+        prev_map = {}
 
     if args.limit > 0:
         stock_list = stock_list[:args.limit]
@@ -218,10 +328,21 @@ def main():
             ma_info["정배열여부"]
         )
 
+        prev_info = prev_map.get(code)
+        grade_change, change_reason = compare_grade_change(
+            prev_info,
+            grade,
+            flow["쌍끌이여부"],
+            ma_info["20일선위"],
+            ma_info["정배열여부"]
+        )
+
         analyzed_rows.append({
             "종목코드": code,
             "종목명": name,
             "투자등급": grade,
+            "등급변동": grade_change,
+            "변동이유": change_reason,
             "현재가": flow["현재가"],
             "외국인보유율": flow["외국인보유율"],
             "쌍끌이여부": flow["쌍끌이여부"],
@@ -240,7 +361,7 @@ def main():
 
         if idx % 50 == 0 or idx == total_stocks:
             elapsed = time.time() - start_time
-            print(f"[{idx}/{total_stocks}] 데이터 수집 진행 중... ({name} -> 등급: {grade}, 쌍끌이: {flow['쌍끌이여부']}, 20일선위: {ma_info['20일선위']})")
+            print(f"[{idx}/{total_stocks}] 데이터 수집 진행 중... ({name} -> 등급: {grade}, 변동: {grade_change})")
 
         time.sleep(args.delay)
 
@@ -254,21 +375,24 @@ def main():
         reverse=True
     )
 
-    print("\n" + "=" * 115)
-    print(f"{'종목코드':<8} | {'종목명':<16} | {'등급':<4} | {'현재가':<10} | {'쌍끌이':<4} | {'20일선위':<6} | {'정배열':<4} | {'외인연속':<6} | {'기관연속':<6}")
-    print("-" * 115)
+    print("\n" + "=" * 135)
+    print(f"{'종목코드':<8} | {'종목명':<16} | {'등급':<4} | {'등급변동':<16} | {'변동이유':<30} | {'현재가':<10} | {'쌍끌이':<4} | {'20일선위':<6}")
+    print("-" * 135)
     
     for r in analyzed_rows[:30]:
-        print(f"{r['종목코드']:<8} | {r['종목명']:<16} | {r['투자등급']:<4} | {r['현재가']:<10} | {r['쌍끌이여부']:<4} | {r['20일선위']:<6} | {r['정배열여부']:<4} | {r['외국인연속매수(일)']}일   | {r['기관연속매수(일)']}일")
+        print(f"{r['종목코드']:<8} | {r['종목명']:<16} | {r['투자등급']:<4} | {r['등급변동']:<16} | {r['변동이유']:<30} | {r['현재가']:<10} | {r['쌍끌이여부']:<4} | {r['20일선위']:<6}")
     print("=" * 115)
 
     a_plus_count = sum(1 for r in analyzed_rows if r['투자등급'] == 'A+')
     a_count = sum(1 for r in analyzed_rows if r['투자등급'] == 'A')
-    print(f"\n[분석 완료] 총 {total_stocks}개 종목 중 A+등급: {a_plus_count}개 / A등급: {a_count}개 포착 완료")
+    upgraded_count = sum(1 for r in analyzed_rows if "(상향)" in r['등급변동'])
+    downgraded_count = sum(1 for r in analyzed_rows if "(하향)" in r['등급변동'])
+    
+    print(f"\n[분석 완료] 총 {total_stocks}개 종목 중 A+등급: {a_plus_count}개 / A등급: {a_count}개 (상향 종목: {upgraded_count}개 / 하향 종목: {downgraded_count}개)")
 
     # CSV 저장 (날짜별 폴더 및 동시 저장 처리)
     fieldnames = [
-        "종목코드", "종목명", "투자등급", "현재가", "외국인보유율", "쌍끌이여부",
+        "종목코드", "종목명", "투자등급", "등급변동", "변동이유", "현재가", "외국인보유율", "쌍끌이여부",
         "외국인연속매수(일)", "기관연속매수(일)", "최근3일외인순매수", "최근3일기관순매수",
         "20일선위", "정배열여부", "MA5", "MA20", "MA60", "MA120", "상세페이지"
     ]
