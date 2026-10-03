@@ -199,5 +199,6 @@ python3 getEtfAiReport.py
 
 ## 📖 상세 매뉴얼 및 가이드 문서
 
-- 📄 **[docs/etf_분석.md](file:///Users/hyunjongkim/Documents/02_dev/stock_naver/docs/etf_%EB%B6%84%EC%84%9D.md)**: 전체 데이터 파이프라인 구조 및 네이버 API 명세서
-- 📄 **[docs/추세추종.md](file:///Users/hyunjongkim/Documents/02_dev/stock_naver/docs/%EC%B6%94%EC%84%B8%EC%B6%94%EC%A2%85.md)**: 주체추종 원칙, 4단계 피라미드 분할매수 (40% → 30% → 20% → 10%), -3% 손절 철칙 상세 매뉴얼
+- 📄 **[docs/etf_분석.md](file:///Users/hyunjongkim/Documents/100_prd/stockNaverEtf/docs/etf_%EB%B6%84%EC%84%9D.md)**: 전체 데이터 파이프라인 구조 및 네이버 API 명세서
+- 📄 **[docs/추세추종.md](file:///Users/hyunjongkim/Documents/100_prd/stockNaverEtf/docs/%EC%B6%94%EC%84%B8%EC%B6%94%EC%A2%85.md)**: 주체추종 원칙, 4단계 피라미드 분할매수 (40% → 30% → 20% → 10%), -3% 손절 철칙 상세 매뉴얼
+- 📄 **[docs/실시간감지.md](file:///Users/hyunjongkim/Documents/100_prd/stockNaverEtf/docs/%EC%8B%A4%EC%8B%9C%EA%B0%84%EA%B0%90%EC%A7%80.md)**: 내 포트폴리오 실시간 시세 감시 및 -3% 손절 알림 시스템 설계 명세서

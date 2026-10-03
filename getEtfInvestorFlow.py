@@ -381,6 +381,45 @@ def main():
             prev_grade, current_grade, ma_info['is_aligned'], ma_info['above_ma20'], bi_buying
         )
 
+        # 20일 이격도(%) 및 과열/추세단계/추천매수가 산출
+        curr_price_val = ma_info['current_price']
+        ma20_val = ma_info['ma20']
+        ma5_val = ma_info['ma5']
+        
+        if ma20_val > 0:
+            disparity = round((curr_price_val / ma20_val) * 100, 1)
+        else:
+            disparity = 100.0
+
+        if disparity >= 115.0:
+            overheat_str = "단기과열(경계)"
+        elif disparity >= 108.0:
+            overheat_str = "상승과열"
+        elif disparity >= 97.0:
+            overheat_str = "적정(안전)"
+        else:
+            overheat_str = "이격과도(눌림)"
+
+        if disparity >= 115.0:
+            phase_str = "단기과열 (추격금지)"
+        elif current_grade == "A+" and disparity < 110.0:
+            phase_str = "정배열가속(A+)"
+        elif current_grade == "A+":
+            phase_str = "고점지속(A+)"
+        elif current_grade == "A":
+            phase_str = "수급우량(A)"
+        elif bi_buying and ma20_val >= ma_info['ma60']:
+            phase_str = "추세초입(B)"
+        else:
+            phase_str = "관망(C)"
+
+        if ma20_val > 0 and ma5_val > 0:
+            low_p = min(round(ma20_val), round(ma5_val))
+            high_p = max(round(ma20_val), round(ma5_val))
+            target_price_str = f"{low_p:,}원 ~ {high_p:,}원"
+        else:
+            target_price_str = f"{curr_price_str}원"
+
         analyzed_rows.append({
             "종목코드": code,
             "종목명": name,
@@ -397,6 +436,10 @@ def main():
             "최근3일기관순매수": f"{o_sum3:,}",
             "20일선위": above_ma20_str,
             "정배열여부": aligned_str,
+            "20일이격도": f"{disparity}%",
+            "과열여부": overheat_str,
+            "추세단계": phase_str,
+            "추천매수가": target_price_str,
             "MA5": f"{round(ma_info['ma5']):,}",
             "MA20": f"{round(ma_info['ma20']):,}",
             "MA60": f"{round(ma_info['ma60']):,}",
@@ -439,7 +482,8 @@ def main():
         fieldnames = [
             "종목코드", "종목명", "섹터", "투자등급", "등급변동", "변동이유", "현재가", "외국인보유율", "쌍끌이여부",
             "외국인연속매수(일)", "기관연속매수(일)", "최근3일외인순매수", "최근3일기관순매수",
-            "20일선위", "정배열여부", "MA5", "MA20", "MA60", "MA120", "상세페이지"
+            "20일선위", "정배열여부", "20일이격도", "과열여부", "추세단계", "추천매수가",
+            "MA5", "MA20", "MA60", "MA120", "상세페이지"
         ]
         save_dir = os.path.dirname(save_csv_path)
         if save_dir:

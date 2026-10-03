@@ -28,7 +28,7 @@
     
     <!-- Top Header (GNB) -->
     <header class="gnb">
-      <div class="gnb-brand">
+      <div class="gnb-brand" onclick="goHome()" style="cursor: pointer;" title="초기 대시보드 화면으로 이동">
         <div class="brand-icon">
           <i class="fa-solid fa-chart-line-up"></i>
         </div>
@@ -99,6 +99,18 @@
           <div class="strategy-banner">
             <div class="banner-title"><i class="fa-solid fa-shield-halved"></i> 추세추종 수칙</div>
             <p>20일선 위 + 쌍끌이 수급 주도주 중심<br>손절선 -3% 엄수 / 피라미딩 분할매수</p>
+          </div>
+
+          <div class="strategy-banner guide-banner" style="margin-top: 0.75rem; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.12); padding: 0.85rem; border-radius: 10px;">
+            <div class="banner-title" style="color: #f59e0b; font-size: 0.88rem; font-weight: 700; margin-bottom: 0.5rem;">
+              <i class="fa-solid fa-gauge-high"></i> 20일 이격도 & 과열 판정
+            </div>
+            <div style="font-size: 0.78rem; line-height: 1.5; color: #cbd5e1;">
+              <div style="margin-bottom: 0.35rem;"><strong style="color: #10b981;">🟢 적정 (97~108%):</strong> 20일선 안심 1차 진입 적기</div>
+              <div style="margin-bottom: 0.35rem;"><strong style="color: #f59e0b;">🟡 상승과열 (108~115%):</strong> 추격 자제 / 본전 스탑로스</div>
+              <div style="margin-bottom: 0.35rem;"><strong style="color: #ef4444;">🔴 단기과열 (115% 이상):</strong> 🚨 <strong>추매 및 불타기 금지!</strong></div>
+              <div><strong style="color: #818cf8;">🔵 이격과도 (&lt;97%):</strong> 20일선 이탈 / 관망</div>
+            </div>
           </div>
         </div>
       </aside>
@@ -184,6 +196,10 @@
                     <th>코드</th>
                     <th>종목명</th>
                     <th>대표 섹터</th>
+                    <th>20일이격도</th>
+                    <th>과열여부</th>
+                    <th>추세단계</th>
+                    <th>권장진입가 (MA20~MA5)</th>
                     <th>현재가</th>
                     <th>쌍끌이</th>
                     <th>외인연속</th>
@@ -235,8 +251,8 @@
           <div class="section-card">
             <div class="section-header">
               <div>
-                <h2><i class="fa-solid fa-arrow-trend-down highlight-red"></i> 🔻 등급 하향 & 리스크 관리 주의 종목</h2>
-                <p class="section-desc">이전 거래일 대비 수급 약화 또는 20일선/정배열 이탈로 등급이 하향(A+ ➔ A/B/C) 조정된 종목</p>
+                <h2><i class="fa-solid fa-arrow-trend-down highlight-red"></i> 🔻 A+ 등급 하향 & 리스크 관리 주의 종목</h2>
+                <p class="section-desc">이전 거래일 대비 수급 약화 또는 정배열 이탈로 A+ 등급에서 하향(A+ ➔ A/B/C) 조정된 핵심 주의 종목</p>
               </div>
               <span class="badge-tag tag-downgraded" id="downgradedCardBadge">0종목</span>
             </div>
@@ -312,6 +328,9 @@
                     <th onclick="sortTable('섹터')">대표 섹터 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('투자등급')">투자등급 <i class="fa-solid fa-sort"></i></th>
                     <th>등급변동</th>
+                    <th onclick="sortTable('20일이격도')">20일이격도 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('과열여부')">과열여부 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('추세단계')">추세단계 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('현재가')">현재가 <i class="fa-solid fa-sort"></i></th>
                     <th>쌍끌이</th>
                     <th>외인연속</th>
@@ -365,7 +384,7 @@
         <!-- View 3: Stock Detail Page -->
         <section id="viewStockDetail" class="view-panel">
           <div class="report-header-bar">
-            <button class="btn-back" onclick="switchView('dashboard')">
+            <button class="btn-back" onclick="goBackToDashboard()">
               <i class="fa-solid fa-arrow-left"></i> 대시보드로 돌아가기
             </button>
             <div class="report-title-info">
@@ -440,6 +459,24 @@
                 <span class="kpi-label">이동평균선 상태</span>
                 <span class="kpi-value" id="detailMaStatus">정배열 달성</span>
                 <span class="kpi-sub" id="detailMa20Status">20일선 위 (O)</span>
+              </div>
+            </div>
+
+            <div class="kpi-card card-upgraded">
+              <div class="kpi-icon"><i class="fa-solid fa-gauge-high"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">20일 이격도 / 과열도</span>
+                <span class="kpi-value" id="detailDisparity">100.0%</span>
+                <span class="kpi-sub" id="detailOverheat">적정(안전)</span>
+              </div>
+            </div>
+
+            <div class="kpi-card card-a">
+              <div class="kpi-icon"><i class="fa-solid fa-bullseye"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">권장 매수 진입가 (MA20~MA5)</span>
+                <span class="kpi-value" id="detailTargetPrice">0원</span>
+                <span class="kpi-sub" id="detailPhase">추세단계: 정배열가속</span>
               </div>
             </div>
           </div>

@@ -7,8 +7,12 @@
 // Global State Management
 let allStockData = [];
 let filteredStockData = [];
-let availableDates = ["20261002"];
+let availableDates = [
+  "20260918", "20260921", "20260922", "20260923", "20260924",
+  "20260925", "20260928", "20260929", "20260930", "20261001", "20261002"
+];
 let currentDate = "20261002";
+let stockHistoryCache = {}; // { dateStr: { code: gradeStr } }
 
 // Filter States
 let currentGradeFilter = "ALL";
@@ -30,7 +34,33 @@ document.addEventListener("DOMContentLoaded", () => {
   initDatePickers(currentDate);
   loadDateExplorer();
   loadDashboardData(currentDate);
+  buildStockHistoryCache();
 });
+
+function buildStockHistoryCache() {
+  availableDates.forEach(dateStr => {
+    fetch(`reports/report_${dateStr}.csv`)
+      .then(res => res.text())
+      .then(csvText => {
+        Papa.parse(csvText, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: h => h.replace(/^\ufeff/, '').trim(),
+          complete: function(results) {
+            if (results.data) {
+              stockHistoryCache[dateStr] = {};
+              results.data.forEach(item => {
+                if (item.종목코드) {
+                  stockHistoryCache[dateStr][item.종목코드] = item.투자등급;
+                }
+              });
+            }
+          }
+        });
+      })
+      .catch(() => {});
+  });
+}
 
 /**
  * 0. 달력(Date Picker) 초기화 및 날짜 변경 핸들러
@@ -346,7 +376,7 @@ function renderHighlights() {
   if (aplusTbody) {
     aplusTbody.innerHTML = "";
     if (aplusList.length === 0) {
-      aplusTbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">A+ 등급 조건(쌍끌이+20일선위+정배열)을 만족하는 종목이 없습니다.</td></tr>`;
+      aplusTbody.innerHTML = `<tr><td colspan="14" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">A+ 등급 조건(쌍끌이+20일선위+정배열)을 만족하는 종목이 없습니다.</td></tr>`;
     } else {
       aplusList.forEach(row => {
         const tr = document.createElement("tr");
@@ -354,14 +384,28 @@ function renderHighlights() {
           ? '<span class="badge-dual yes">쌍끌이</span>' 
           : '<span class="badge-dual no">-</span>';
 
+        const overheatText = row.과열여부 || "적정(안전)";
+        let overheatBadge = '<span style="color:#10b981; font-weight:600;"><i class="fa-solid fa-shield-check"></i> 적정(안전)</span>';
+        if (overheatText.includes("단기과열")) {
+          overheatBadge = '<span style="color:#ef4444; font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> 단기과열</span>';
+        } else if (overheatText.includes("상승과열")) {
+          overheatBadge = '<span style="color:#f59e0b; font-weight:600;"><i class="fa-solid fa-fire"></i> 상승과열</span>';
+        } else if (overheatText.includes("이격과도")) {
+          overheatBadge = '<span style="color:#6366f1; font-weight:600;"><i class="fa-solid fa-arrow-trend-down"></i> 이격과도</span>';
+        }
+
         tr.innerHTML = `
           <td><code>${row.종목코드}</code></td>
           <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
           <td><span class="stock-sector-tag">${row.섹터}</span></td>
+          <td><span class="count-pill">${row["20일이격도"] || "100.0%"}</span></td>
+          <td>${overheatBadge}</td>
+          <td><span class="stock-sector-tag" style="background: rgba(255,255,255,0.06); color: var(--text-main); font-weight: 600;">${row.추세단계 || "정배열가속(A+)"}</span></td>
+          <td><strong style="color: var(--color-aplus); font-size: 0.85rem;">${row.추천매수가 || `${row.현재가}원`}</strong></td>
           <td><strong>${row.현재가}원</strong></td>
           <td>${dualBadge}</td>
-          <td>${row.외국인연속}일</td>
-          <td>${row.기관연속}일</td>
+          <td>${row.외국인연속 || row["외국인연속매수(일)"] || 0}일</td>
+          <td>${row.기관연속 || row["기관연속매수(일)"] || 0}일</td>
           <td>${row["20일선위"] === "O" ? "🟢 O" : "🔴 X"}</td>
           <td>${row.정배열여부 === "O" ? "🟢 O" : "🔴 X"}</td>
           <td><a href="${row.상세페이지}" target="_blank" class="link-naver">네이버 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.75rem;"></i></a></td>
@@ -403,8 +447,8 @@ function renderHighlights() {
     }
   }
 
-  // 3. Downgraded Table rendering (하향 조정된 주의 종목)
-  const downgradedList = allStockData.filter(d => d.등급변동.includes("하향"));
+  // 3. Downgraded Table rendering (A+ 등급에서 하향 조정된 주의 종목만 추출)
+  const downgradedList = allStockData.filter(d => d.등급변동.includes("A+ -> A") || d.등급변동.includes("A+ ->"));
   const downgradedTbody = document.getElementById("downgradedTableBody");
   const badgeEl = document.getElementById("downgradedCardBadge");
   if (badgeEl) badgeEl.innerText = `${downgradedList.length}종목`;
@@ -412,7 +456,7 @@ function renderHighlights() {
   if (downgradedTbody) {
     downgradedTbody.innerHTML = "";
     if (downgradedList.length === 0) {
-      downgradedTbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">이전 거래일 대비 등급이 하향 조정된 주의 종목이 없습니다.</td></tr>`;
+      downgradedTbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">이전 거래일 대비 A+ 등급에서 하향 조정된 리스크 관리 주의 종목이 없습니다.</td></tr>`;
     } else {
       downgradedList.forEach(row => {
         const tr = document.createElement("tr");
@@ -488,8 +532,11 @@ function applyFiltersAndRenderTable() {
       valA = gradeRank[a.투자등급] || 99;
       valB = gradeRank[b.투자등급] || 99;
     } else if (sortKey === "현재가") {
-      valA = parseInt(a.현재가.replace(/,/g, "") || 0, 10);
-      valB = parseInt(b.현재가.replace(/,/g, "") || 0, 10);
+      valA = parseInt((a.현재가 || "0").replace(/,/g, "") || 0, 10);
+      valB = parseInt((b.현재가 || "0").replace(/,/g, "") || 0, 10);
+    } else if (sortKey === "20일이격도") {
+      valA = parseFloat((a["20일이격도"] || "0").replace(/%/g, "") || 0);
+      valB = parseFloat((b["20일이격도"] || "0").replace(/%/g, "") || 0);
     }
 
     if (valA < valB) return sortAsc ? -1 : 1;
@@ -515,7 +562,7 @@ function renderTableRows() {
   const pageRows = filteredStockData.slice(startIndex, startIndex + pageSize);
 
   if (pageRows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align: center; padding: 2rem; color: var(--text-dim);">검색 및 필터 조건에 부합하는 종목이 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 2rem; color: var(--text-dim);">검색 및 필터 조건에 부합하는 종목이 없습니다.</td></tr>`;
     return;
   }
 
@@ -531,16 +578,29 @@ function renderTableRows() {
       ? '<span class="badge-dual yes">쌍끌이</span>' 
       : '<span class="badge-dual no">-</span>';
 
+    const overheatText = row.과열여부 || "적정(안전)";
+    let overheatBadge = '<span style="color:#10b981; font-weight:600;"><i class="fa-solid fa-shield-check"></i> 적정(안전)</span>';
+    if (overheatText.includes("단기과열")) {
+      overheatBadge = '<span style="color:#ef4444; font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> 단기과열</span>';
+    } else if (overheatText.includes("상승과열")) {
+      overheatBadge = '<span style="color:#f59e0b; font-weight:600;"><i class="fa-solid fa-fire"></i> 상승과열</span>';
+    } else if (overheatText.includes("이격과도")) {
+      overheatBadge = '<span style="color:#6366f1; font-weight:600;"><i class="fa-solid fa-arrow-trend-down"></i> 이격과도</span>';
+    }
+
     tr.innerHTML = `
       <td><code>${row.종목코드}</code></td>
       <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
       <td><span class="stock-sector-tag">${row.섹터}</span></td>
       <td><span class="badge-grade ${gradeBadgeClass}">${row.투자등급}</span></td>
       <td>${row.등급변동}</td>
+      <td><span class="count-pill">${row["20일이격도"] || "100.0%"}</span></td>
+      <td>${overheatBadge}</td>
+      <td><span class="stock-sector-tag" style="background: rgba(255,255,255,0.06); color: var(--text-main); font-weight: 600;">${row.추세단계 || "관망(C)"}</span></td>
       <td><strong>${row.현재가}원</strong></td>
       <td>${dualBadge}</td>
-      <td>${row.외국인연속}일</td>
-      <td>${row.기관연속}일</td>
+      <td>${row.외국인연속 || row["외국인연속매수(일)"] || 0}일</td>
+      <td>${row.기관연속 || row["기관연속매수(일)"] || 0}일</td>
       <td>${row["20일선위"] === "O" ? "🟢 O" : "🔴 X"}</td>
       <td>${row.정배열여부 === "O" ? "🟢 O" : "🔴 X"}</td>
       <td><a href="${row.상세페이지}" target="_blank" class="link-naver">네이버 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.75rem;"></i></a></td>
@@ -599,6 +659,31 @@ function handleSearchInput() {
   applyFiltersAndRenderTable();
 }
 
+function goHome() {
+  currentGradeFilter = "ALL";
+  currentSectorFilter = "ALL";
+  currentAlignFilter = "ALL";
+  currentSearchQuery = "";
+  currentPage = 1;
+
+  const searchInput = document.getElementById("searchInput");
+  if (searchInput) searchInput.value = "";
+
+  const sectorSelect = document.getElementById("sectorSelectFilter");
+  if (sectorSelect) sectorSelect.value = "ALL";
+
+  const alignSelect = document.getElementById("alignmentFilter");
+  if (alignSelect) alignSelect.value = "ALL";
+
+  document.querySelectorAll("#gradeFilterTabs .filter-tab").forEach(tab => {
+    tab.classList.toggle("active", tab.dataset.grade === "ALL");
+  });
+
+  switchView('dashboard');
+  applyFiltersAndRenderTable();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function filterByGradeQuick(grade) {
   switchView('dashboard');
   setGradeFilter(grade);
@@ -626,6 +711,19 @@ function sortTable(key) {
   }
   applyFiltersAndRenderTable();
 }
+
+function goBackToDashboard() {
+  switchView('dashboard');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+window.addEventListener("popstate", (e) => {
+  if (e.state && e.state.view === 'stockDetail' && e.state.code) {
+    openStockDetail(e.state.code, false);
+  } else {
+    switchView('dashboard');
+  }
+});
 
 /**
  * 12. 뷰 전환 및 AI 마크다운 리포트 / 종목 상세 로딩
@@ -678,9 +776,15 @@ function selectDateReport(dateStr) {
  */
 let currentChartInstance = null;
 
-function openStockDetail(code) {
+function openStockDetail(code, pushHistory = true) {
   const stock = allStockData.find(s => s.종목코드 === code);
   if (!stock) return;
+
+  if (pushHistory && window.history && window.history.pushState) {
+    try {
+      window.history.pushState({ view: 'stockDetail', code: code }, '', `#stock-${code}`);
+    } catch(e) {}
+  }
 
   // 헤더 요약 정보 업데이트
   document.getElementById("detailStockCode").innerText = stock.종목코드;
@@ -707,14 +811,33 @@ function openStockDetail(code) {
   }
 
   // 지표 카드 세부 수치 업데이트
-  document.getElementById("detailForeignSeq").innerText = `${stock.외국인연속}일 연속`;
+  document.getElementById("detailForeignSeq").innerText = `${stock.외국인연속 || stock["외국인연속매수(일)"] || 0}일 연속`;
   document.getElementById("detailForeignSum").innerText = `최근 3일: ${stock["최근3일외인순매수"] || 0}주`;
-  document.getElementById("detailOrganSeq").innerText = `${stock.기관연속}일 연속`;
+  document.getElementById("detailOrganSeq").innerText = `${stock.기관연속 || stock["기관연속매수(일)"] || 0}일 연속`;
   document.getElementById("detailOrganSum").innerText = `최근 3일: ${stock["최근3일기관순매수"] || 0}주`;
   document.getElementById("detailForeignRatio").innerText = stock.외국인보유율;
   
   document.getElementById("detailMaStatus").innerText = stock.정배열여부 === "O" ? "🟢 완전 정배열 달성" : "🔴 정배열 미달";
   document.getElementById("detailMa20Status").innerText = stock["20일선위"] === "O" ? "20일선 위 (상승 추세)" : "20일선 미달 (관망)";
+
+  const disparityVal = stock["20일이격도"] || "100.0%";
+  const overheatVal = stock.과열여부 || "적정(안전)";
+  const targetPriceVal = stock.추천매수가 || `${stock.현재가}원`;
+  const phaseVal = stock.추세단계 || "관망(C)";
+
+  let overheatGuideText = "🟢 적정 (20일선 안심 눌림목 1차 진입 적기)";
+  if (overheatVal.includes("단기과열")) {
+    overheatGuideText = "🚨 단기과열 (추격 매수 및 추가 불타기 절대 금지!)";
+  } else if (overheatVal.includes("상승과열")) {
+    overheatGuideText = "🟡 상승과열 (신규 추격 자제 / 본전 스탑로스 설정)";
+  } else if (overheatVal.includes("이격과도")) {
+    overheatGuideText = "🔵 이격과도 (20일선 재돌파 전까지 관망)";
+  }
+
+  document.getElementById("detailDisparity").innerText = disparityVal;
+  document.getElementById("detailOverheat").innerText = overheatGuideText;
+  document.getElementById("detailTargetPrice").innerText = targetPriceVal;
+  document.getElementById("detailPhase").innerText = `추세단계: ${phaseVal}`;
 
   // 이평선 가격 수치
   document.getElementById("detailMa5").innerText = `${stock.MA5 || "0"}원`;
@@ -724,6 +847,7 @@ function openStockDetail(code) {
 
   // 뷰 전환 & 차트 출력
   switchView("stockDetail");
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   renderGradeHistoryChart(stock);
 }
 
@@ -740,26 +864,15 @@ function renderGradeHistoryChart(stock) {
   }
 
   const gradeMap = { "A+": 4, "A": 3, "B": 2, "C": 1 };
-  const currentGradeNum = gradeMap[stock.투자등급] || 1;
-
-  // 일별 히스토리 날짜 및 등급 수치 구성
-  const dates = ["09-26", "09-27", "09-30", "10-01", "10-02"];
-  let prevGradeNum = currentGradeNum;
-
-  if (stock.등급변동) {
-    if (stock.등급변동.includes("A -> A+")) prevGradeNum = 3;
-    else if (stock.등급변동.includes("B -> A+")) prevGradeNum = 2;
-    else if (stock.등급변동.includes("A+ -> A")) prevGradeNum = 4;
-    else if (stock.등급변동.includes("A+ -> B")) prevGradeNum = 4;
-  }
-
-  const dataPoints = [
-    Math.max(1, prevGradeNum - 1),
-    prevGradeNum,
-    prevGradeNum,
-    prevGradeNum,
-    currentGradeNum
-  ];
+  
+  // 11개 거래일 라벨 (MM-DD) 및 해당 날짜별 실제 등급 데이터
+  const dates = availableDates.map(d => `${d.slice(4,6)}-${d.slice(6,8)}`);
+  const dataPoints = availableDates.map(d => {
+    if (stockHistoryCache[d] && stockHistoryCache[d][stock.종목코드]) {
+      return gradeMap[stockHistoryCache[d][stock.종목코드]] || 1;
+    }
+    return gradeMap[stock.투자등급] || 1;
+  });
 
   const gradient = ctx.createLinearGradient(0, 0, 0, 300);
   gradient.addColorStop(0, "rgba(16, 185, 129, 0.4)");
@@ -787,26 +900,40 @@ function renderGradeHistoryChart(stock) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      layout: {
+        padding: { left: 10, right: 15, top: 15, bottom: 10 }
+      },
       scales: {
         y: {
-          min: 0.5,
-          max: 4.5,
+          min: 0,
+          max: 5,
           ticks: {
             stepSize: 1,
             callback: function(val) {
-              if (val === 4) return "🔥 A+ (대세주)";
-              if (val === 3) return "⭐ A (우량주)";
-              if (val === 2) return "🟡 B (관찰주)";
-              if (val === 1) return "⚪ C (관망주)";
+              const numVal = Math.round(val);
+              if (numVal === 4) return "🔥 A+ (대세주)";
+              if (numVal === 3) return "⭐ A (우량주)";
+              if (numVal === 2) return "🟡 B (관찰주)";
+              if (numVal === 1) return "⚪ C (관망주)";
               return "";
             },
-            color: "#94a3b8",
-            font: { size: 12, weight: "bold" }
+            color: "#cbd5e1",
+            font: { size: 13, weight: "bold", family: "Inter, sans-serif" }
           },
-          grid: { color: "rgba(255, 255, 255, 0.08)" }
+          grid: {
+            color: function(ctx) {
+              if (ctx.tick && [1, 2, 3, 4].includes(Math.round(ctx.tick.value))) {
+                return "rgba(255, 255, 255, 0.12)";
+              }
+              return "transparent";
+            }
+          }
         },
         x: {
-          ticks: { color: "#94a3b8" },
+          ticks: {
+            color: "#94a3b8",
+            font: { size: 11, weight: "600" }
+          },
           grid: { color: "rgba(255, 255, 255, 0.05)" }
         }
       },
@@ -815,8 +942,8 @@ function renderGradeHistoryChart(stock) {
         tooltip: {
           callbacks: {
             label: function(context) {
-              const val = context.parsed.y;
-              const names = { 4: "A+ 등급 (쌍끌이+20일선위+정배열)", 3: "A 등급 (쌍끌이+20일선위)", 2: "B 등급 (수급/차트 1가지)", 1: "C 등급 (관망)" };
+              const val = Math.round(context.parsed.y);
+              const names = { 4: "A+ 등급 (쌍끌이 + 20일선위 + 정배열)", 3: "A 등급 (쌍끌이 + 20일선위)", 2: "B 등급 (수급/차트 1가지)", 1: "C 등급 (관망)" };
               return ` 투자등급: ${names[val] || val}`;
             }
           }
