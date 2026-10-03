@@ -28,9 +28,47 @@ stock_naver/
 
 ---
 
-## 🚀 소스코드 실행 파이프라인 순서
+## 🚀 파이프라인 실행 가이드 (`main.py`)
 
-아래 명령어를 순서대로 실행하면 **최신 ETF 주도주 수급 및 이동평균선 분석 데이터**가 일별 폴더(`분석_yyyymmdd/`)에 자동으로 업데이트됩니다.
+통합 실행 스크립트인 **`main.py`**를 사용하면 1~4단계 전체 파이프라인을 한 번에 실행하거나, 원하는 개별 단계만 옵션으로 선택하여 실행할 수 있습니다.
+
+### 1) 전체 파이프라인 자동 실행 (1단계 → 4단계 순차 실행)
+```bash
+python3 main.py
+# 또는
+python3 main.py --all
+```
+
+### 2) 특정 단계만 지정하여 실행 (`--step` 옵션)
+```bash
+# 4단계(수급 및 이평선 분석)만 실행
+python3 main.py --step 4
+
+# 1단계, 2단계만 순차 실행
+python3 main.py --step 1,2
+
+# 1단계부터 4단계까지 전체 실행
+python3 main.py --step 1-4
+```
+
+### 3) 단계별 직관적인 옵션으로 실행
+```bash
+# 1단계: ETF 기본 목록 수집 (getEtfList.py)
+python3 main.py --etf-list
+
+# 2단계: ETF 상위 구성종목 수집 (getEtfDtlList.py)
+python3 main.py --etf-dtl
+
+# 3단계: 주도주 6자리 종목코드 추출 (getEtfTopStockList.py)
+python3 main.py --top-stocks
+
+# 4단계: 외국인/기관 수급 & 이동평균선 통합 분석 (getEtfInvestorFlow.py)
+python3 main.py --investor-flow
+```
+
+---
+
+## 🛠️ 개별 스크립트 직접 실행 방법
 
 ### 1단계: 국내 주식형 ETF 전체 목록 수집
 ```bash
@@ -56,6 +94,7 @@ python3 getEtfInvestorFlow.py
 ```
 * **결과 저장**: `분석_yyyymmdd/분석_yyyymmdd.csv` (예: `분석_20261003/분석_20261003.csv`)
 * **핵심 기능**:
+  - 이전 날짜 분석 파일과 자동 비교하여 **`등급변동` (예: `A -> A+ (상향)`)** 및 **`변동이유`** 자동 기록
   - 외국인/기관 5일 연속 매수 일수 및 3일 누적 순매수 수량 합산
   - 5일, 20일, 60일, 120일 이동평균선(MA) 계산
   - `20일선위(O/X)` 및 `정배열여부(O/X)` 자동 판별
