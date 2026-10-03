@@ -10,20 +10,20 @@
    최근 120일간의 이동평균선(5일, 20일, 60일, 120일 MA)을 계산합니다.
    
    이후 추세추종 원칙에 따라 종목마다 **투자등급(A+, A, B, C)**을 부여하고, 
-   이전 거래일 결과 파일(`분석/분석_YYYYMMDD.csv`)과 자동 비교하여 
+   이전 거래일 결과 파일(`reports/report_YYYYMMDD.csv`)과 자동 비교하여 
    **등급 상향/하향 변동(예: A -> A+) 및 변동 이유**를 기록합니다.
 
 2. 입력 데이터:
    - CSV 파일: `data/etf_top_stocks.csv` (3단계 실행 결과)
-   - 이전 분석 CSV 파일: `분석/분석_이전날짜.csv` (등급 변동 비교용, 자동 검색)
+   - 이전 분석 CSV 파일: `reports/report_이전날짜.csv` (등급 변동 비교용, 자동 검색)
 
 3. 출력 결과:
-   - CSV 파일: `분석/분석_YYYYMMDD.csv` (예: `분석/분석_20261003.csv`)
-   - 💡 5단계 AI 분석 마크다운 리포트(`분석/분석_YYYYMMDD.md`) 자동 호출 연동
+   - CSV 파일: `reports/report_YYYYMMDD.csv` (예: `reports/report_20261002.csv`)
+   - 💡 5단계 AI 분석 마크다운 리포트(`reports/report_YYYYMMDD.md`) 자동 호출 연동
 
 4. 주요 작동 흐름 (누구나 이해할 수 있는 단계별 설명):
    - 1단계 [읽기]: 320개 주도주 목록을 불러옵니다.
-   - 2단계 [비교분석 검색]: `분석/` 폴더에서 가장 최근에 저장된 이전 분석 CSV 파일을 찾습니다.
+   - 2단계 [비교분석 검색]: `reports/` 폴더에서 가장 최근에 저장된 이전 분석 CSV 파일을 찾습니다.
    - 3단계 [수급/차트 조회]: 네이버 API를 호출해 외국인/기관 동시 연속 매수 일수와 5/20/60/120일 이동평균선을 계산합니다.
    - 4단계 [등급 및 변동 부여]:
      - **A+ 등급**: 쌍끌이 매수(O) + 20일선 위(O) + 정배열(O) (5 >= 20 >= 60 >= 120일선)
@@ -31,7 +31,7 @@
      - **B 등급**: 수급 또는 차트 1가지 만족
      - **C 등급**: 20일선 이탈 등 관망 대상
      - 이전 대비 **상향(A->A+)** 또는 **하향(A+->B)** 변동 이유를 자동 기록합니다.
-   - 5단계 [저장 & 5단계 연동]: 결과를 `분석/분석_YYYYMMDD.csv`로 저장하고 바로 5단계 AI 리포트 생성기를 자동 호출합니다.
+   - 5단계 [저장 & 5단계 연동]: 결과를 `reports/report_YYYYMMDD.csv`로 저장하고 바로 5단계 AI 리포트 생성기를 자동 호출합니다.
 ================================================================================
 """
 
@@ -56,6 +56,28 @@ def parse_quant(quant_str):
         return int(clean)
     except ValueError:
         return 0
+
+def get_latest_market_bizdate(sample_code="005930"):
+    """
+    네이버 증권 API를 호출하여 가장 최근 주식 시장 마감 거래일자(YYYYMMDD)를 자동 감지합니다.
+    주말/공휴일/장 시작 전 실행 시 가장 최근에 장이 열렸던 거래일(예: 금요일)이 자동 설정됩니다.
+    """
+    url = f"https://m.stock.naver.com/api/stock/{sample_code}/trend?page=1&pageSize=1"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            trends = data if isinstance(data, list) else data.get("result", [])
+            if trends and isinstance(trends, list) and len(trends) > 0:
+                bizdate = trends[0].get("bizdate", "").strip()
+                if bizdate and len(bizdate) == 8 and bizdate.isdigit():
+                    return bizdate
+    except Exception:
+        pass
+    return datetime.now().strftime("%Y%m%d")
 
 def fetch_investor_trend(code, page_size=5):
     """
@@ -89,12 +111,13 @@ def fetch_investor_trend(code, page_size=5):
             # 가장 최근일의 현재가 및 외국인 소진율(보유율)
             latest = trends[0]
             close_price = latest.get("closePrice", "0")
-            foreign_ratio = latest.get("foreignHoldRate", "0.0%")
+            foreign_ratio = latest.get("foreignerHoldRatio") or latest.get("foreignHoldRate") or "0.0%"
 
             # 💡 외국인 연속 매수 일수 계산
             foreign_seq = 0
             for item in trends:
-                f_quant = parse_quant(item.get("foreignPureBuyQuant", "0"))
+                f_quant_str = item.get("foreignerPureBuyQuant") or item.get("foreignPureBuyQuant") or "0"
+                f_quant = parse_quant(f_quant_str)
                 if f_quant > 0:
                     foreign_seq += 1
                 else:
@@ -103,7 +126,8 @@ def fetch_investor_trend(code, page_size=5):
             # 💡 기관 연속 매수 일수 계산
             organ_seq = 0
             for item in trends:
-                o_quant = parse_quant(item.get("organPureBuyQuant", "0"))
+                o_quant_str = item.get("organPureBuyQuant") or item.get("organPureBuy") or "0"
+                o_quant = parse_quant(o_quant_str)
                 if o_quant > 0:
                     organ_seq += 1
                 else:
@@ -111,8 +135,8 @@ def fetch_investor_trend(code, page_size=5):
 
             # 최근 3일간 누적 순매수 수량 합산
             recent_3 = trends[:3]
-            f_sum_3 = sum(parse_quant(i.get("foreignPureBuyQuant", "0")) for i in recent_3)
-            o_sum_3 = sum(parse_quant(i.get("organPureBuyQuant", "0")) for i in recent_3)
+            f_sum_3 = sum(parse_quant(i.get("foreignerPureBuyQuant") or i.get("foreignPureBuyQuant") or "0") for i in recent_3)
+            o_sum_3 = sum(parse_quant(i.get("organPureBuyQuant") or i.get("organPureBuy") or "0") for i in recent_3)
 
             return foreign_seq, organ_seq, f_sum_3, o_sum_3, foreign_ratio, close_price
 
@@ -176,19 +200,19 @@ def fetch_moving_averages(code):
 
 def find_latest_previous_file(today_str):
     """
-    `분석/` 폴더 내에서 오늘 날짜(YYYYMMDD) 이전의 가장 최근 분석 CSV 파일을 찾아냅니다.
+    `reports/` 폴더 내에서 오늘 날짜(YYYYMMDD) 이전의 가장 최근 분석 CSV 파일을 찾아냅니다.
     (이전 등급과 비교하여 등급 상향/하향 및 변동이유를 구하기 위함)
     """
-    anal_dir = "분석"
+    anal_dir = "reports"
     if not os.path.exists(anal_dir):
         return None, {}
 
-    files = glob.glob(os.path.join(anal_dir, "분석_*.csv"))
+    files = glob.glob(os.path.join(anal_dir, "report_*.csv"))
     prev_files = []
     
     for f in files:
         base_name = os.path.basename(f)
-        date_part = base_name.replace("분석_", "").replace(".csv", "")
+        date_part = base_name.replace("report_", "").replace(".csv", "")
         # 오늘 날짜 이전의 파일들만 수집
         if date_part.isdigit() and date_part < today_str:
             prev_files.append((date_part, f))
@@ -271,16 +295,28 @@ def main():
     """
     [4단계] 외국인/기관 수급 & 이동평균선 통합 분석 메인 실행 함수입니다.
     """
-    today_yyyyMMdd = datetime.now().strftime("%Y%m%d")
-    default_save_csv = f"분석/분석_{today_yyyyMMdd}.csv"
-    default_input = "data/etf_top_stocks.csv" if os.path.exists("data/etf_top_stocks.csv") else "etf_top_stocks.csv"
+    default_input = "data/etf_top_stocks.csv"
 
     parser = argparse.ArgumentParser(description="[4단계] 외국인/기관 수급 & 이동평균선 통합 분석 스크립트")
     parser.add_argument("--input-csv", type=str, default=default_input, help=f"3단계 종목 파일 경로 (기본값: {default_input})")
-    parser.add_argument("--save-csv", type=str, default=default_save_csv, help=f"저장할 분석 CSV 경로 (기본값: {default_save_csv})")
+    parser.add_argument("--save-csv", type=str, default=None, help="저장할 분석 CSV 경로 (미지정 시 최근 마감 거래일 기준 자동 생성)")
+    parser.add_argument("--date", type=str, default=None, help="분석 대상 거래일자 (YYYYMMDD 형식, 미지정 시 API 최신 마감 거래일 자동 감지)")
     parser.add_argument("--limit", type=int, default=0, help="분석할 종목 수 제한 (테스트용, 0이면 전체)")
     parser.add_argument("--delay", type=float, default=0.03, help="요청 간 대기시간(초) (기본값: 0.03초)")
     args = parser.parse_args()
+
+    # 분석 기준 거래일자 결정 (지정 날짜 > 네이버 API 최신 장마감 거래일)
+    if args.date:
+        target_date = args.date.strip()
+    else:
+        target_date = get_latest_market_bizdate()
+
+    save_csv_path = args.save_csv if args.save_csv else f"reports/report_{target_date}.csv"
+
+    today_cal = datetime.now().strftime("%Y-%m-%d")
+    fmt_target = f"{target_date[:4]}-{target_date[4:6]}-{target_date[6:]}"
+    print(f"\n📅 [거래일 기준 감지] 실행 시각: {today_cal} | 네이버 API 최근 마감 거래일(기준일자): {fmt_target}")
+    print(f"📁 [결과 파일 경로] {save_csv_path}")
 
     # 1. 3단계 주도주 종목 데이터 불러오기
     try:
@@ -295,8 +331,8 @@ def main():
     total_stocks = len(stock_list)
     print(f"\n🚀 [4단계] '{args.input_csv}' 파일에서 총 {total_stocks}개의 주도주 목록을 읽었습니다.")
 
-    # 2. 이전 분석 CSV 파일 검색 (비교용)
-    prev_file_path, prev_grades = find_latest_previous_file(today_yyyyMMdd)
+    # 2. 이전 거래일 분석 CSV 파일 검색 (기준일자 이전 파일 비교)
+    prev_file_path, prev_grades = find_latest_previous_file(target_date)
     if prev_file_path:
         print(f"🔍 이전 분석 파일 발견: '{prev_file_path}' (이전 {len(prev_grades)}개 종목 등급과 비교합니다)")
     else:
@@ -315,6 +351,7 @@ def main():
     for idx, s in enumerate(stock_list, 1):
         code = s.get("종목코드", "").strip()
         name = s.get("종목명", "").strip()
+        sector = s.get("섹터", "일반 주도주").strip()
         detail_url = s.get("상세페이지", "").strip()
 
         if not code:
@@ -347,6 +384,7 @@ def main():
         analyzed_rows.append({
             "종목코드": code,
             "종목명": name,
+            "섹터": sector,
             "투자등급": current_grade,
             "등급변동": grade_change,
             "변동이유": change_reason,
@@ -366,8 +404,13 @@ def main():
             "상세페이지": detail_url
         })
 
-        if idx % 50 == 0 or idx == len(stock_list):
-            print(f"⏳ [{idx}/{len(stock_list)}] 데이터 수집 진행 중... ({name} -> 등급: {current_grade}, 변동: {grade_change})")
+        # 20개 단위 및 1번째/마지막 진행 상황 상세 출력
+        if idx % 20 == 0 or idx == len(stock_list) or idx == 1:
+            elapsed = time.time() - start_time
+            pct = (idx / len(stock_list)) * 100
+            avg_per_item = elapsed / idx
+            remaining = (len(stock_list) - idx) * avg_per_item
+            print(f"⏳ [{idx:3d}/{len(stock_list):3d}] ({pct:5.1f}%) | 수급분석: [{code}] {name[:12]:<12} ({sector:<12}) | 등급: {current_grade:<2} | 경과: {elapsed:5.1f}초 (남은시간: 약 {remaining:4.1f}초)")
 
         time.sleep(args.delay)
 
@@ -376,13 +419,13 @@ def main():
     analyzed_rows.sort(key=lambda x: (grade_order.get(x["투자등급"], 99), x["종목코드"]))
 
     # 콘솔 상위 30개 결과 미리보기
-    print("\n" + "=" * 135)
-    print(f"{'종목코드':<8} | {'종목명':<16} | {'등급':<4} | {'등급변동':<16} | {'변동이유':<30} | {'현재가':<10} | {'쌍끌이':<4} | {'20일선위':<6}")
-    print("-" * 135)
+    print("\n" + "=" * 145)
+    print(f"{'종목코드':<8} | {'종목명':<16} | {'섹터':<14} | {'등급':<4} | {'등급변동':<16} | {'현재가':<10} | {'쌍끌이':<4} | {'20일선위':<6}")
+    print("-" * 145)
     
     for r in analyzed_rows[:30]:
-        print(f"{r['종목코드']:<8} | {r['종목명']:<16} | {r['투자등급']:<4} | {r['등급변동']:<16} | {r['변동이유']:<30} | {r['현재가']:<10} | {r['쌍끌이여부']:<4} | {r['20일선위']:<6}")
-    print("=" * 135)
+        print(f"{r['종목코드']:<8} | {r['종목명']:<16} | {r['섹터']:<14} | {r['투자등급']:<4} | {r['등급변동']:<16} | {r['현재가']:<10} | {r['쌍끌이여부']:<4} | {r['20일선위']:<6}")
+    print("=" * 145)
 
     a_plus_count = sum(1 for r in analyzed_rows if r['투자등급'] == 'A+')
     a_count = sum(1 for r in analyzed_rows if r['투자등급'] == 'A')
@@ -392,26 +435,26 @@ def main():
     print(f"\n✅ [분석 완료] 총 {len(analyzed_rows)}개 종목 중 A+등급: {a_plus_count}개 / A등급: {a_count}개 (상향: {upgraded_count}개 / 하향: {downgraded_count}개)")
 
     # 5. `분석/분석_YYYYMMDD.csv` 파일 저장
-    if args.save_csv:
+    if save_csv_path:
         fieldnames = [
-            "종목코드", "종목명", "투자등급", "등급변동", "변동이유", "현재가", "외국인보유율", "쌍끌이여부",
+            "종목코드", "종목명", "섹터", "투자등급", "등급변동", "변동이유", "현재가", "외국인보유율", "쌍끌이여부",
             "외국인연속매수(일)", "기관연속매수(일)", "최근3일외인순매수", "최근3일기관순매수",
             "20일선위", "정배열여부", "MA5", "MA20", "MA60", "MA120", "상세페이지"
         ]
-        save_dir = os.path.dirname(args.save_csv)
+        save_dir = os.path.dirname(save_csv_path)
         if save_dir:
             os.makedirs(save_dir, exist_ok=True)
-        with open(args.save_csv, "w", encoding="utf-8-sig", newline="") as f:
+        with open(save_csv_path, "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(analyzed_rows)
-        print(f"💾 [저장 완료] 일별 수급 및 이평선 분석 결과가 저장되었습니다: {args.save_csv}")
+        print(f"💾 [저장 완료] 일별 수급 및 이평선 분석 결과가 저장되었습니다: {save_csv_path}")
 
         # 💡 5단계 AI 분석 마크다운 리포트(분석_YYYYMMDD.md) 100% 자동 생성 연동
         try:
             from getEtfAiReport import generate_ai_report
             print("\n🤖 [자동 연동] 5단계 AI 추세추종 분석 마크다운 리포트를 자동 생성합니다...")
-            generate_ai_report(args.save_csv)
+            generate_ai_report(save_csv_path)
         except Exception as e:
             print(f"⚠️ AI 마크다운 리포트 생성 중 오류 발생: {e}")
 

@@ -5,15 +5,15 @@
 📌 [5단계] AI 추세추종 종합 분석 마크다운 리포트 생성 프로그램 (getEtfAiReport.py)
 ================================================================================
 1. 프로그램 역할:
-   4단계에서 산출된 분석 결과 CSV(`분석/분석_YYYYMMDD.csv`) 데이터를 바탕으로 
+   4단계에서 산출된 분석 결과 CSV(`reports/report_YYYYMMDD.csv`) 데이터를 바탕으로 
    누구나 한눈에 주도주 현황과 매매 전략을 파악할 수 있는 
-   아주 예쁜 AI 종합 분석 마크다운 보고서(`분석/분석_YYYYMMDD.md`)를 자동 생성합니다.
+   아주 예쁜 AI 종합 분석 마크다운 보고서(`reports/report_YYYYMMDD.md`)를 자동 생성합니다.
 
 2. 입력 데이터:
-   - CSV 파일: `분석/분석_YYYYMMDD.csv` (4단계 실행 결과)
+   - CSV 파일: `reports/report_YYYYMMDD.csv` (4단계 실행 결과)
 
 3. 출력 결과:
-   - 마크다운 파일: `분석/분석_YYYYMMDD.md` (예: `분석/분석_20261003.md`)
+   - 마크다운 파일: `reports/report_YYYYMMDD.md` (예: `reports/report_20261002.md`)
 
 4. 주요 작성 내용 (리포트에 담기는 내용):
    - 📈 **1. 등급 분포 및 수급 요약**: A+, A, B, C 등급별 종목 수 및 비율표
@@ -31,33 +31,55 @@ import csv                 # CSV 파일 파싱 도구
 import argparse            # 실행 옵션 파서
 from datetime import datetime # 현재 날짜/시간 라이브러리
 
+import urllib.request
+import json
+
+def get_latest_market_bizdate(sample_code="005930"):
+    """
+    네이버 증권 API를 호출하여 가장 최근 주식 시장 마감 거래일자(YYYYMMDD)를 자동 감지합니다.
+    """
+    url = f"https://m.stock.naver.com/api/stock/{sample_code}/trend?page=1&pageSize=1"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            trends = data if isinstance(data, list) else data.get("result", [])
+            if trends and isinstance(trends, list) and len(trends) > 0:
+                bizdate = trends[0].get("bizdate", "").strip()
+                if bizdate and len(bizdate) == 8 and bizdate.isdigit():
+                    return bizdate
+    except Exception:
+        pass
+    return datetime.now().strftime("%Y%m%d")
+
 def find_target_csv(target_date=None):
     """
-    분석 대상이 되는 CSV 파일 경로(`분석/분석_YYYYMMDD.csv`)를 찾아내는 함수입니다.
-    날짜를 직접 지정하지 않으면 가장 최신의 분석 CSV 파일을 자동으로 선택합니다.
+    분석 대상이 되는 CSV 파일 경로(`reports/report_YYYYMMDD.csv`)를 찾아내는 함수입니다.
+    날짜를 직접 지정하지 않으면 가장 최근 마감 거래일(bizdate)의 CSV 파일을 자동으로 선택합니다.
     """
-    anal_dir = "분석"
+    anal_dir = "reports"
     if not os.path.exists(anal_dir):
         print(f"❌ '{anal_dir}' 폴더가 존재하지 않습니다.")
         return None
 
-    # 특정 날짜(예: 20261003)가 지정된 경우
-    if target_date:
-        filename = f"분석_{target_date}.csv"
-        path = os.path.join(anal_dir, filename)
-        if os.path.exists(path):
-            return path
-        else:
-            print(f"❌ 지정한 날짜의 분석 CSV 파일이 없습니다: {path}")
-            return None
+    # 지정 날짜가 없으면 네이버 API 기준 최신 장 마감 거래일자 자동 감지
+    if not target_date:
+        target_date = get_latest_market_bizdate()
 
-    # 지정된 날짜가 없으면 `분석/` 폴더에서 가장 최신 날짜 파일 검색
-    files = glob.glob(os.path.join(anal_dir, "분석_*.csv"))
+    filename = f"report_{target_date}.csv"
+    path = os.path.join(anal_dir, filename)
+    if os.path.exists(path):
+        return path
+
+    # 해당 날짜의 파일이 없으면 `reports/` 폴더 내 가장 최근 파일 검색
+    files = glob.glob(os.path.join(anal_dir, "report_*.csv"))
     if not files:
-        print(f"❌ '{anal_dir}' 폴더 내에 분석_YYYYMMDD.csv 파일이 없습니다.")
+        print(f"❌ '{anal_dir}' 폴더 내에 report_YYYYMMDD.csv 파일이 없습니다.")
         return None
 
-    # 날짜순 역순 정렬 후 가장 최근 파일 선택
     files.sort(reverse=True)
     return files[0]
 
@@ -65,12 +87,12 @@ def generate_ai_report(csv_path):
     """
     4단계 분석 CSV 파일 데이터를 파싱하여 가독성 우수한 마크다운(.md) 보고서를 생성합니다.
     
-    :param csv_path: 분석 CSV 파일 경로 (예: '분석/분석_20261003.csv')
+    :param csv_path: 분석 CSV 파일 경로 (예: 'reports/report_20261002.csv')
     :return: True(성공), False(실패)
     """
     base_name = os.path.basename(csv_path)
-    date_part = base_name.replace("분석_", "").replace(".csv", "")
-    md_path = os.path.join(os.path.dirname(csv_path), f"분석_{date_part}.md")
+    date_part = base_name.replace("report_", "").replace(".csv", "")
+    md_path = os.path.join(os.path.dirname(csv_path), f"report_{date_part}.md")
 
     print(f"📖 CSV 데이터 읽기 중: {csv_path}")
     
@@ -126,6 +148,23 @@ def generate_ai_report(csv_path):
     md.append(f"| ⚪ **C** | **{len(c_list):,}개** | {len(c_list)/total_count*100:.1f}% | 조건을 만족하지 못함 (20일선 미달 등) |")
     md.append(f"")
 
+    # [섹션 1-2] 주도 섹터별 수급 및 A+ 종목 분포 요약
+    from collections import Counter
+    sector_counter = Counter(r.get('섹터', '일반 주도주') for r in rows)
+    sector_aplus = Counter(r.get('섹터', '일반 주도주') for r in a_plus_list)
+    sector_a = Counter(r.get('섹터', '일반 주도주') for r in a_list)
+
+    md.append(f"### 🏭 주요 섹터/테마별 A+/A 주도주 수급 현황")
+    md.append(f"| 대표 섹터/테마 | A+ 등급 | A 등급 | 전체 종목수 | 주요 A+ 주도주 |")
+    md.append(f"| :--- | :---: | :---: | :---: | :--- |")
+    for sec_name, total_sec in sector_counter.most_common():
+        ap_cnt = sector_aplus.get(sec_name, 0)
+        a_cnt = sector_a.get(sec_name, 0)
+        top_names = [r['종목명'] for r in a_plus_list if r.get('섹터') == sec_name][:3]
+        top_str = ", ".join(top_names) if top_names else "-"
+        md.append(f"| **{sec_name}** | **{ap_cnt}개** | {a_cnt}개 | {total_sec}개 | {top_str} |")
+    md.append(f"")
+
     # 등급 변동 현황
     md.append(f"### 🔄 이전 거래일 대비 등급 변동 현황")
     if upgraded or downgraded:
@@ -141,23 +180,24 @@ def generate_ai_report(csv_path):
     md.append(f"")
 
     if a_plus_list:
-        md.append(f"| 종목코드 | 종목명 | 현재가 | 외국인연속 | 기관연속 | 外보유율 | 변동이유 | 상세페이지 |")
-        md.append(f"| :---: | :--- | :---: | :---: | :---: | :---: | :--- | :---: |")
+        md.append(f"| 종목코드 | 종목명 | 대표섹터 | 현재가 | 외국인연속 | 기관연속 | 外보유율 | 변동이유 | 상세페이지 |")
+        md.append(f"| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :--- | :---: |")
         for r in a_plus_list:
             code = r['종목코드']
             name = r['종목명']
+            sector = r.get('섹터', '일반 주도주')
             price = r['현재가']
             f_seq = f"{r['외국인연속매수(일)']}일"
             i_seq = f"{r['기관연속매수(일)']}일"
             f_rate = r['외국인보유율']
             reason = r['변동이유']
             link = f"[네이버증권]({r['상세페이지']})"
-            md.append(f"| `{code}` | **{name}** | {price}원 | {f_seq} | {i_seq} | {f_rate} | {reason} | {link} |")
+            md.append(f"| `{code}` | **{name}** | `{sector}` | {price}원 | {f_seq} | {i_seq} | {f_rate} | {reason} | {link} |")
         md.append(f"")
         
         md.append(f"### 💡 A+ 종목별 핵심 투자 팁")
         for r in a_plus_list:
-            md.append(f"- **{r['종목명']} ({r['종목코드']})**:")
+            md.append(f"- **{r['종목명']} ({r['종목코드']}) - {r.get('섹터', '일반 주도주')}**:")
             md.append(f"  - 현재가 {r['현재가']}원 / MA5: {r['MA5']}원 / MA20: {r['MA20']}원")
             md.append(f"  - 외국인 {r['외국인연속매수(일)']}일, 기관 {r['기관연속매수(일)']}일 연속 순매수세 지속중.")
             md.append(f"  - 완전 정배열 상태로 눌림목 발생 시 1차 비중(40%) 진입 후보 1순위.")
@@ -172,11 +212,12 @@ def generate_ai_report(csv_path):
 
     top_a = a_list[:15]
     if top_a:
-        md.append(f"| 종목코드 | 종목명 | 현재가 | 쌍끌이 | 20일선위 | 정배열 | 외인연속 | 기관연속 | 상세링크 |")
-        md.append(f"| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
+        md.append(f"| 종목코드 | 종목명 | 대표섹터 | 현재가 | 쌍끌이 | 20일선위 | 정배열 | 외인연속 | 기관연속 | 상세링크 |")
+        md.append(f"| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
         for r in top_a:
             code = r['종목코드']
             name = r['종목명']
+            sector = r.get('섹터', '일반 주도주')
             price = r['현재가']
             bi = r['쌍끌이여부']
             ma20 = r['20일선위']
@@ -184,7 +225,7 @@ def generate_ai_report(csv_path):
             f_seq = f"{r['외국인연속매수(일)']}일"
             i_seq = f"{r['기관연속매수(일)']}일"
             link = f"[보기]({r['상세페이지']})"
-            md.append(f"| `{code}` | {name} | {price}원 | {bi} | {ma20} | {align} | {f_seq} | {i_seq} | {link} |")
+            md.append(f"| `{code}` | {name} | `{sector}` | {price}원 | {bi} | {ma20} | {align} | {f_seq} | {i_seq} | {link} |")
         md.append(f"")
     else:
         md.append(f"> A 등급 종목이 없습니다.")
@@ -227,7 +268,7 @@ def generate_ai_report(csv_path):
     md.append(f"- **등급 하향 시 대응**: A+/A 등급 종목이 **B 또는 C 등급으로 하향**되거나 **20일선을 이탈**하면 절반 이상 이익실현 또는 손절 정리를 권장합니다.")
     md.append(f"")
     md.append(f"> [!TIP]")
-    md.append(f"> **리포트 활용법**: 본 마크다운 리포트는 매일 4단계 수급 분석 완료 후 5단계 AI 분석을 통해 자동으로 업데이트됩니다. 최신 `분석_YYYYMMDD.md` 파일을 통해 주도주의 등급 변동 추이를 체크하세요.")
+    md.append(f"> **리포트 활용법**: 본 마크다운 리포트는 매일 4단계 수급 분석 완료 후 5단계 AI 분석을 통해 자동으로 업데이트됩니다. 최신 `report_YYYYMMDD.md` 파일을 통해 주도주의 등급 변동 추이를 체크하세요.")
 
     # 마크다운 파일로 저장
     report_content = "\n".join(md)

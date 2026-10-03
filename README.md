@@ -72,13 +72,13 @@ python main.py
 stock_naver/
 ├── data/                                 # 기본 및 중간 분석 데이터 폴더
 │   ├── etf_list.csv                      # 국내 주식형 ETF 전체 목록 (439개)
-│   ├── etf_dtl_list.csv                  # ETF 상위 1~5위 구성종목 목록 (2,181개)
-│   └── etf_top_stocks.csv                # ETF 상위 6자리 주식 종목코드 매핑 (320개)
+│   ├── etf_dtl_list.csv                  # ETF 상위 1~10위 구성종목 목록
+│   └── etf_top_stocks.csv                # ETF 상위 6자리 주식 종목코드 매핑 (약 500여개)
 │
-├── 분석/                                 # 일별 수급 및 이동평균선 분석 결과 저장 폴더
-│   ├── 분석_20261003.csv                  # 수급 & 이평선 분석 결과 CSV 데이터
-│   ├── 분석_20261003.md                   # AI 추세추종 종합 분석 마크다운 리포트
-│   └── 분석_YYYYMMDD.csv / .md            # 매일 생성되는 날짜별 분석 파일들
+├── reports/                                # 일별 수급 및 이동평균선 분석 결과 저장 폴더
+│   ├── report_20261002.csv                  # 수급 & 이평선 분석 결과 CSV 데이터
+│   ├── report_20261002.md                   # AI 추세추종 종합 분석 마크다운 리포트
+│   └── report_YYYYMMDD.csv / .md            # 매일 생성되는 날짜별 분석 파일들
 │
 ├── docs/                                 # 프로젝트 세부 매뉴얼 문서
 │   ├── etf_분석.md                        # ETF 데이터 수집 파이프라인 명세서
@@ -149,11 +149,11 @@ python3 getEtfList.py
 ```
 * **결과 저장**: `data/etf_list.csv` (국내 시장지수 `1`, 업종/테마 `2` 카테고리 439개 ETF 수집)
 
-### 2단계: ETF 상위 1~5위 주요 구성종목 수집
+### 2단계: ETF 상위 1~10위 주요 구성종목 수집
 ```bash
 python3 getEtfDtlList.py
 ```
-* **결과 저장**: `data/etf_dtl_list.csv` (ETF 포트폴리오 상위 1~5위 2,181개 종목 수집)
+* **결과 저장**: `data/etf_dtl_list.csv` (ETF 포트폴리오 상위 1~10위 구성종목 수집)
 
 ### 3단계: 주도주 6자리 종목코드 및 상세페이지 매핑
 ```bash
@@ -165,8 +165,9 @@ python3 getEtfTopStockList.py
 ```bash
 python3 getEtfInvestorFlow.py
 ```
-* **결과 저장**: `분석/분석_YYYYMMDD.csv`
+* **결과 저장**: `reports/report_YYYYMMDD.csv`
 * **핵심 기능**:
+  - 종목별 **`대표 섹터/테마`** (반도체/소부장, 2차전지/배터리, 바이오/헬스케어, 조선/방산 등) 자동 판별
   - 이전 날짜 분석 파일과 자동 비교하여 **`등급변동` (예: `A -> A+ (상향)`)** 및 **`변동이유`** 자동 기록
   - 외국인/기관 5일 연속 매수 일수 및 3일 누적 순매수 수량 합산
   - 5일, 20일, 60일, 120일 이동평균선(MA) 계산
@@ -177,9 +178,9 @@ python3 getEtfInvestorFlow.py
 ```bash
 python3 getEtfAiReport.py
 ```
-* **결과 저장**: `분석/분석_YYYYMMDD.md`
+* **결과 저장**: `reports/report_YYYYMMDD.md`
 * **핵심 기능**:
-  - `분석_YYYYMMDD.csv` 데이터를 바탕으로 AI 분석 리포트 자동 작성
+  - `report_YYYYMMDD.csv` 데이터를 바탕으로 AI 분석 리포트 자동 작성
   - 등급 분포, A+ / A 등급 주도주 심층 요약, 등급 상향/하향 종목 하이라이트
   - 추세추종 피라미딩 매매 가이드 및 risk 관리 원칙 자동 제시
 

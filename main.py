@@ -13,8 +13,8 @@
    - [1단계] `getEtfList.py`      : 네이버 금융 ETF 전체 목록 수집 -> data/etf_list.csv
    - [2단계] `getEtfDtlList.py`   : ETF별 상위 1~5위 주요 구성종목 수집 -> data/etf_dtl_list.csv
    - [3단계] `getEtfTopStockList.py`: 순수 국내주식 320개 정제 및 6자리 종목코드 매핑 -> data/etf_top_stocks.csv
-   - [4단계] `getEtfInvestorFlow.py`: 외인/기관 수급 & 이동평균선(MA) 통합 분석 -> 분석/분석_YYYYMMDD.csv
-   - [5단계] `getEtfAiReport.py`  : AI 추세추종 종합 분석 마크다운 리포트 자동 생성 -> 분석/분석_YYYYMMDD.md
+   - [4단계] `getEtfInvestorFlow.py`: 외인/기관 수급 & 이동평균선(MA) 통합 분석 -> reports/report_YYYYMMDD.csv
+   - [5단계] `getEtfAiReport.py`  : AI 추세추종 종합 분석 마크다운 리포트 자동 생성 -> reports/report_YYYYMMDD.md
 
 3. 주요 실행 방법:
    - 대화형 메뉴 (추천) : `python3 main.py` 실행 후 엔터(기본값 4+5단계 자동실행) 또는 번호 선택
@@ -69,7 +69,7 @@ def show_interactive_menu():
     print("📊 [네이버 주식 ETF 주도주 분석 파이프라인] 대화형 실행 메뉴")
     print("=" * 90)
     print("  1. [1단계] ETF 전체 목록 수집                  (`getEtfList.py`)")
-    print("  2. [2단계] ETF 상위 1~5위 구성종목 수집          (`getEtfDtlList.py`)")
+    print("  2. [2단계] ETF 상위 1~10위 구성종목 수집         (`getEtfDtlList.py`)")
     print("  3. [3단계] 주도주 6자리 종목코드/상세페이지 추출 (`getEtfTopStockList.py`)")
     print("  4. [4단계] 외국인/기관 수급 & 이동평균선 통합 분석 (`getEtfInvestorFlow.py`)")
     print("  5. [5단계] AI 추세추종 분석 마크다운 리포트 생성 (`getEtfAiReport.py`)")
@@ -138,7 +138,8 @@ def main():
     
     # 추가 제어 옵션
     parser.add_argument("--limit", type=int, default=0, help="스크립트별 처리 종목 수 제한 (테스트용)")
-    parser.add_argument("--top-n", type=int, default=5, help="2단계 ETF당 상위 N개 종목 수집 (기본값: 5)")
+    parser.add_argument("--top-n", type=int, default=10, help="2단계 ETF당 상위 N개 종목 수집 (기본값: 10)")
+    parser.add_argument("--date", type=str, help="분석 대상 거래일자 (YYYYMMDD 형식, 미지정 시 API 최신 마감 거래일 자동 감지)")
     args = parser.parse_args()
 
     steps_to_run = set()
@@ -200,11 +201,17 @@ def main():
         run_step(3, "주도주 6자리 종목코드/상세페이지 추출", "getEtfTopStockList.py", extra)
 
     if 4 in steps_to_run:
-        extra = ["--limit", str(args.limit)] if args.limit > 0 else []
+        extra = []
+        if args.limit > 0:
+            extra.extend(["--limit", str(args.limit)])
+        if args.date:
+            extra.extend(["--date", str(args.date)])
         run_step(4, "외국인/기관 수급 & 이동평균선 통합 분석", "getEtfInvestorFlow.py", extra)
 
     if 5 in steps_to_run:
         extra = []
+        if args.date:
+            extra.extend(["--date", str(args.date)])
         run_step(5, "AI 추세추종 분석 마크다운 리포트 생성", "getEtfAiReport.py", extra)
 
     total_elapsed = time.time() - total_start

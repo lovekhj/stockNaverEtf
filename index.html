@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>네이버 주식 ETF 주도주 수급 & 추세추종 대시보드</title>
+  <meta name="description" content="네이버 증권 API 기반 국내 ETF 상위 주도주 수급(외인/기관 쌍끌이) 및 이동평균선 정배열 추세 분석 대시보드">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- External CDN Libraries (PapaParse, Marked, Chart.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="dark-theme">
+  <!-- App Container -->
+  <div class="app-layout">
+    
+    <!-- Top Header (GNB) -->
+    <header class="gnb">
+      <div class="gnb-brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-chart-line-up"></i>
+        </div>
+        <div class="brand-text">
+          <h1 class="brand-title">ETF 주도주 <span class="highlight">수급</span></h1>
+          <p class="brand-sub">외국인/기관 쌍끌이 & 5/20/60/120일 이동평균선 추세추종</p>
+        </div>
+      </div>
+      
+      <div class="gnb-actions">
+        <div class="badge-market" id="marketBizdateBadge">
+          <i class="fa-solid fa-calendar-check"></i> <span id="latestDateText">2026-10-02</span> 마감 기준
+        </div>
+        <div class="badge-count">
+          <i class="fa-solid fa-database"></i> 총 <span id="totalStocksBadgeCount">0</span>개 주도주
+        </div>
+        <button id="themeToggleBtn" class="btn-icon" title="다크/라이트 모드 전환" aria-label="테마 전환">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </header>
+    
+    <!-- Main Body Layout (LNB + Content) -->
+    <div class="body-container">
+      
+      <!-- Left Sidebar (LNB) -->
+      <aside class="lnb">
+        <div class="lnb-section">
+          <h3 class="lnb-title"><i class="fa-solid fa-compass"></i> 대시보드</h3>
+          <nav class="lnb-nav">
+            <button class="nav-btn active" id="navBtnMain" onclick="switchView('dashboard')">
+              <i class="fa-solid fa-house-signal"></i>
+              <span>통합 통계 대시보드</span>
+            </button>
+          </nav>
+        </div>
+        
+        <div class="lnb-section">
+          <h3 class="lnb-title"><i class="fa-solid fa-sliders"></i> 등급 즉시 필터</h3>
+          <div class="quick-filter-group">
+            <button class="quick-filter-btn filter-aplus" onclick="filterByGradeQuick('A+')">
+              <span class="dot aplus"></span> A+ 최상위주
+              <span class="count-pill" id="quickCountAplus">0</span>
+            </button>
+            <button class="quick-filter-btn filter-a" onclick="filterByGradeQuick('A')">
+              <span class="dot a"></span> A 우량 수급주
+              <span class="count-pill" id="quickCountA">0</span>
+            </button>
+            <button class="quick-filter-btn filter-upgraded" onclick="filterByUpgradeQuick()">
+              <i class="fa-solid fa-arrow-trend-up"></i> 오늘 등급 상향
+              <span class="count-pill" id="quickCountUpgraded">0</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="lnb-section lnb-history">
+          <div class="history-header">
+            <h3 class="lnb-title"><i class="fa-solid fa-calendar-days"></i> 일별 리포트 달력</h3>
+            <span class="history-badge">Calendar</span>
+          </div>
+          
+          <div class="date-picker-box">
+            <input type="date" id="datePickerInput" onchange="handleDatePickerChange(this.value)">
+          </div>
+        </div>
+
+        <div class="lnb-footer">
+          <div class="strategy-banner">
+            <div class="banner-title"><i class="fa-solid fa-shield-halved"></i> 추세추종 수칙</div>
+            <p>20일선 위 + 쌍끌이 수급 주도주 중심<br>손절선 -3% 엄수 / 피라미딩 분할매수</p>
+          </div>
+        </div>
+      </aside>
+      
+      <!-- Main Content Area -->
+      <main class="main-content">
+        
+        <!-- View 1: Main Dashboard -->
+        <section id="viewDashboard" class="view-panel active">
+          
+          <!-- KPI Metrics Row -->
+          <div class="kpi-grid">
+            <div class="kpi-card card-total">
+              <div class="kpi-icon"><i class="fa-solid fa-cubes"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">분석 대상 주도주</span>
+                <span class="kpi-value" id="kpiTotalCount">0</span>
+                <span class="kpi-sub">국내 주식형 ETF Top10</span>
+              </div>
+            </div>
+            
+            <div class="kpi-card card-aplus">
+              <div class="kpi-icon"><i class="fa-solid fa-fire"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">🔥 A+ 등급 (정배열 대세주)</span>
+                <span class="kpi-value" id="kpiAplusCount">0</span>
+                <span class="kpi-sub" id="kpiAplusRatio">비율 0.0%</span>
+              </div>
+            </div>
+            
+            <div class="kpi-card card-a">
+              <div class="kpi-icon"><i class="fa-solid fa-star"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">⭐ A 등급 (우량 수급주)</span>
+                <span class="kpi-value" id="kpiACount">0</span>
+                <span class="kpi-sub" id="kpiARatio">비율 0.0%</span>
+              </div>
+            </div>
+
+            <div class="kpi-card card-dual">
+              <div class="kpi-icon"><i class="fa-solid fa-handshake"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">🤝 외인/기관 쌍끌이 유입</span>
+                <span class="kpi-value" id="kpiDualCount">0</span>
+                <span class="kpi-sub" id="kpiDualRatio">비율 0.0%</span>
+              </div>
+            </div>
+            
+            <div class="kpi-card card-upgraded">
+              <div class="kpi-icon"><i class="fa-solid fa-circle-chevron-up"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">⬆️ 등급 상향 종목</span>
+                <span class="kpi-value" id="kpiUpgradedCount">0</span>
+                <span class="kpi-sub">이전 분석 대비 승격</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Sector Breakdown Bar / Grid Section -->
+          <div class="section-card">
+            <div class="section-header">
+              <h2><i class="fa-solid fa-industry"></i> 주요 섹터/테마별 주도주 분포 현황</h2>
+              <p class="section-desc">11개 핵심 주도 섹터별 A+ / A 등급 포진 현황</p>
+            </div>
+            <div class="sector-grid" id="sectorGrid">
+              <!-- Sector cards populated via JS -->
+            </div>
+          </div>
+          
+          <!-- A+ Top Champions Table Section -->
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-trophy highlight-gold"></i> 🔥 A+ 등급 핵심 주도주 (정배열 대세상승)</h2>
+                <p class="section-desc">쌍끌이 수급 + 20일선 위 + 5/20/60/120일선 완전 정배열 검증 종목</p>
+              </div>
+              <span class="badge-tag tag-aplus" id="aplusCardBadge">0종목</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>코드</th>
+                    <th>종목명</th>
+                    <th>대표 섹터</th>
+                    <th>현재가</th>
+                    <th>쌍끌이</th>
+                    <th>외인연속</th>
+                    <th>기관연속</th>
+                    <th>20일선위</th>
+                    <th>정배열</th>
+                    <th>상세링크</th>
+                  </tr>
+                </thead>
+                <tbody id="aplusTableBody">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Upgraded Stocks Table Section -->
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-bolt highlight-blue"></i> 🚀 신규 승격 & A+ 등급 상향 종목</h2>
+                <p class="section-desc">이전 거래일 대비 수급/차트 조건 개선으로 A+ 등급으로 승격되었거나 신규 포착된 최상위 주도주</p>
+              </div>
+              <span class="badge-tag tag-upgraded" id="upgradedCardBadge">0종목</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>코드</th>
+                    <th>종목명</th>
+                    <th>대표 섹터</th>
+                    <th>등급변동</th>
+                    <th>변동이유</th>
+                    <th>현재가</th>
+                    <th>쌍끌이</th>
+                    <th>20일선위</th>
+                    <th>상세링크</th>
+                  </tr>
+                </thead>
+                <tbody id="upgradedTableBody">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Downgraded Stocks Table Section -->
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-arrow-trend-down highlight-red"></i> 🔻 등급 하향 & 리스크 관리 주의 종목</h2>
+                <p class="section-desc">이전 거래일 대비 수급 약화 또는 20일선/정배열 이탈로 등급이 하향(A+ ➔ A/B/C) 조정된 종목</p>
+              </div>
+              <span class="badge-tag tag-downgraded" id="downgradedCardBadge">0종목</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>코드</th>
+                    <th>종목명</th>
+                    <th>대표 섹터</th>
+                    <th>등급변동</th>
+                    <th>변동이유</th>
+                    <th>현재가</th>
+                    <th>쌍끌이</th>
+                    <th>20일선위</th>
+                    <th>상세링크</th>
+                  </tr>
+                </thead>
+                <tbody id="downgradedTableBody">
+                  <!-- Populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Full Data Table Section -->
+          <div class="section-card">
+            <div class="section-header table-header-flex">
+              <div>
+                <h2><i class="fa-solid fa-table-list"></i> 전체 주도주 수급 & 추세 분석 테이블</h2>
+                <p class="section-desc">조건별 필터링 및 네이버 증권 시세 바로가기 제공</p>
+              </div>
+              
+              <div class="table-search-bar">
+                <div class="search-input-wrapper">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <input type="text" id="searchInput" placeholder="종목명 또는 6자리 코드 검색..." oninput="handleSearchInput()">
+                </div>
+              </div>
+            </div>
+            
+            <!-- Table Filter Toolbar -->
+            <div class="table-toolbar">
+              <div class="filter-tabs" id="gradeFilterTabs">
+                <button class="filter-tab active" data-grade="ALL" onclick="setGradeFilter('ALL')">전체 (<span id="tabCountALL">0</span>)</button>
+                <button class="filter-tab" data-grade="A+" onclick="setGradeFilter('A+')">🔥 A+ (<span id="tabCountAplus">0</span>)</button>
+                <button class="filter-tab" data-grade="A" onclick="setGradeFilter('A')">⭐ A (<span id="tabCountA">0</span>)</button>
+                <button class="filter-tab" data-grade="B" onclick="setGradeFilter('B')">🟡 B (<span id="tabCountB">0</span>)</button>
+                <button class="filter-tab" data-grade="C" onclick="setGradeFilter('C')">⚪ C (<span id="tabCountC">0</span>)</button>
+              </div>
+              
+              <div class="select-filters">
+                <select id="sectorSelectFilter" onchange="handleFilterChange()">
+                  <option value="ALL">전체 섹터 보기</option>
+                  <!-- Populated via JS -->
+                </select>
+                
+                <select id="alignmentFilter" onchange="handleFilterChange()">
+                  <option value="ALL">정배열 전체</option>
+                  <option value="O">정배열 달성 (O)</option>
+                  <option value="X">정배열 미달 (X)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Main Data Table -->
+            <div class="table-responsive">
+              <table class="data-table" id="mainDataTable">
+                <thead>
+                  <tr>
+                    <th onclick="sortTable('종목코드')">코드 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('종목명')">종목명 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('섹터')">대표 섹터 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('투자등급')">투자등급 <i class="fa-solid fa-sort"></i></th>
+                    <th>등급변동</th>
+                    <th onclick="sortTable('현재가')">현재가 <i class="fa-solid fa-sort"></i></th>
+                    <th>쌍끌이</th>
+                    <th>외인연속</th>
+                    <th>기관연속</th>
+                    <th>20일선위</th>
+                    <th>정배열</th>
+                    <th>상세링크</th>
+                  </tr>
+                </thead>
+                <tbody id="tableBody">
+                  <!-- Rows populated via JS -->
+                </tbody>
+              </table>
+            </div>
+            
+            <!-- Table Pagination & Counter Footer -->
+            <div class="table-footer">
+              <div class="table-info">
+                조회 결과: 총 <strong id="visibleRowCount">0</strong>개 종목
+              </div>
+              <div class="pagination" id="paginationControls">
+                <!-- Page buttons populated via JS -->
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+        
+        <!-- View 2: Daily AI Report Markdown Render -->
+        <section id="viewReport" class="view-panel">
+          <div class="report-header-bar">
+            <button class="btn-back" onclick="switchView('dashboard')">
+              <i class="fa-solid fa-arrow-left"></i> 대시보드로 돌아가기
+            </button>
+            <div class="report-title-info">
+              <h2 id="reportPageTitle">📅 AI 종합 추세추종 리포트</h2>
+              <div class="report-date-picker-wrap">
+                <input type="date" id="reportHeaderDatePicker" onchange="handleDatePickerChange(this.value)">
+              </div>
+            </div>
+          </div>
+          
+          <div class="report-paper markdown-body" id="markdownRenderBox">
+            <div class="report-loading">
+              <i class="fa-solid fa-spinner fa-spin"></i> 마크다운 리포트를 불러오는 중입니다...
+            </div>
+          </div>
+        </section>
+
+        <!-- View 3: Stock Detail Page -->
+        <section id="viewStockDetail" class="view-panel">
+          <div class="report-header-bar">
+            <button class="btn-back" onclick="switchView('dashboard')">
+              <i class="fa-solid fa-arrow-left"></i> 대시보드로 돌아가기
+            </button>
+            <div class="report-title-info">
+              <h2 id="detailStockTitle">종목 상세 분석</h2>
+              <span class="badge-grade grade-aplus" id="detailStockGradeBadge">A+</span>
+            </div>
+          </div>
+
+          <!-- Stock Main Header Card -->
+          <div class="section-card detail-main-card">
+            <div class="detail-header-flex">
+              <div>
+                <span class="detail-code-badge" id="detailStockCode">005930</span>
+                <h1 class="detail-stock-name" id="detailStockName">삼성전자</h1>
+                <div class="detail-tags-row">
+                  <span class="stock-sector-tag" id="detailStockSector">반도체/소부장</span>
+                  <span id="detailStockDualBadge"></span>
+                </div>
+              </div>
+              
+              <div class="detail-price-box">
+                <span class="detail-price-label">현재가 (종가)</span>
+                <div class="detail-price-num" id="detailStockPrice">75,000원</div>
+                <a href="#" id="detailStockNaverLink" target="_blank" class="link-naver">네이버 증권 시세 페이지 ↗</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Daily Grade Change Chart Section -->
+          <div class="section-card">
+            <div class="section-header">
+              <h2><i class="fa-solid fa-chart-line highlight-gold"></i> 📈 일별 투자등급 변화 그래프</h2>
+              <p class="section-desc">날짜별 수급/추세 변동에 따른 투자등급(A+ ➔ A ➔ B ➔ C) 이력</p>
+            </div>
+            <div class="chart-box-wrapper" style="position: relative; height: 320px;">
+              <canvas id="gradeHistoryChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Key Investor Metrics Cards -->
+          <div class="kpi-grid">
+            <div class="kpi-card card-dual">
+              <div class="kpi-icon"><i class="fa-solid fa-user-astronaut"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">외국인 수급</span>
+                <span class="kpi-value" id="detailForeignSeq">0일 연속</span>
+                <span class="kpi-sub" id="detailForeignSum">최근3일: 0주</span>
+              </div>
+            </div>
+            
+            <div class="kpi-card card-dual">
+              <div class="kpi-icon"><i class="fa-solid fa-building-columns"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">기관 수급</span>
+                <span class="kpi-value" id="detailOrganSeq">0일 연속</span>
+                <span class="kpi-sub" id="detailOrganSum">최근3일: 0주</span>
+              </div>
+            </div>
+            
+            <div class="kpi-card card-total">
+              <div class="kpi-icon"><i class="fa-solid fa-pie-chart"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">외국인 보유율</span>
+                <span class="kpi-value" id="detailForeignRatio">0.0%</span>
+                <span class="kpi-sub">지분 소진 현황</span>
+              </div>
+            </div>
+
+            <div class="kpi-card card-aplus">
+              <div class="kpi-icon"><i class="fa-solid fa-layer-group"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">이동평균선 상태</span>
+                <span class="kpi-value" id="detailMaStatus">정배열 달성</span>
+                <span class="kpi-sub" id="detailMa20Status">20일선 위 (O)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Moving Average Prices Table -->
+          <div class="section-card">
+            <div class="section-header">
+              <h2><i class="fa-solid fa-sliders"></i> 이동평균선(MA) 세부 가격 지표</h2>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>5일선 (MA5)</th>
+                    <th>20일선 (MA20)</th>
+                    <th>60일선 (MA60)</th>
+                    <th>120일선 (MA120)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong id="detailMa5">0원</strong></td>
+                    <td><strong id="detailMa20">0원</strong></td>
+                    <td><strong id="detailMa60">0원</strong></td>
+                    <td><strong id="detailMa120">0원</strong></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Custom Alert Modal Dialog Overlay -->
+  <div id="customModalOverlay" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <h3 class="modal-title" id="modalTitle">데이터 미존재 알림</h3>
+      <p class="modal-body-text" id="modalBodyText">해당 날짜의 분석 데이터가 존재하지 않습니다.</p>
+      <div class="modal-actions">
+        <button class="btn-modal-close" id="btnModalClose" onclick="closeCustomModal()">닫기 (확인)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom JS -->
+  <script src="app.js"></script>
+</body>
+</html>

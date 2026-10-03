@@ -2,23 +2,23 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
-📌 [2단계] ETF 상위 구성종목(포트폴리오 Top 1~5위) 수집 프로그램 (getEtfDtlList.py)
+📌 [2단계] ETF 상위 구성종목(포트폴리오 Top 1~10위) 수집 프로그램 (getEtfDtlList.py)
 ================================================================================
 1. 프로그램 역할:
    1단계에서 수집한 ETF 목록(`data/etf_list.csv`)을 읽어와서 각 ETF 펀드가
-   어떤 주식 종목들을 가장 많이 담고 있는지(상위 1~5위 주요 구성종목 및 편입비율)
+   어떤 주식 종목들을 가장 많이 담고 있는지(상위 1~10위 주요 구성종목 및 편입비율)
    WiseReport 기업분석 서버에서 정밀 수집합니다.
 
 2. 입력 데이터:
    - CSV 파일: `data/etf_list.csv` (1단계 실행 결과)
 
 3. 출력 결과:
-   - CSV 파일: `data/etf_dtl_list.csv` (ETF명, 구성종목명, 편입비율 등 약 2,000여 개 구성 행)
+   - CSV 파일: `data/etf_dtl_list.csv` (ETF명, 구성종목명, 편입비율 등 약 4,000여 개 구성 행)
 
 4. 주요 작동 흐름 (누구나 이해할 수 있는 단계별 설명):
    - 1단계 [읽기]: 1단계에서 만든 `data/etf_list.csv` 목록을 불러옵니다.
    - 2단계 [조회]: 각 ETF마다 와이즈리포트(WiseReport) 기업정보 페이지에 접속합니다.
-   - 3단계 [추출]: 해당 ETF의 자산 중 상위 1~5위에 해당하는 구성 주식 종목명과 비중(%)을 뽑아냅니다.
+   - 3단계 [추출]: 해당 ETF의 자산 중 상위 1~10위에 해당하는 구성 주식 종목명과 비중(%)을 뽑아냅니다.
    - 4단계 [저장]: 전체 ETF의 상위 구성종목들을 모아서 `data/etf_dtl_list.csv` 파일로 저장합니다.
 ================================================================================
 """
@@ -102,7 +102,7 @@ def main():
     parser.add_argument("--save-csv", type=str, default="data/etf_dtl_list.csv", help="저장할 CSV 파일 경로 (기본값: data/etf_dtl_list.csv)")
     parser.add_argument("--save-json", type=str, default=None, help="저장할 JSON 파일 경로")
     parser.add_argument("--limit-etf", type=int, default=0, help="수집할 ETF 수 제한 (테스트용, 0이면 전체)")
-    parser.add_argument("--top-n", type=int, default=5, help="ETF당 상위 N개 구성종목만 추출 (기본값: 5위까지)")
+    parser.add_argument("--top-n", type=int, default=10, help="ETF당 상위 N개 구성종목만 추출 (기본값: 10위까지)")
     parser.add_argument("--delay", type=float, default=0.03, help="요청 간 대기시간(초) (기본값: 0.03초)")
     args = parser.parse_args()
 
@@ -130,7 +130,7 @@ def main():
     total_etfs = len(etf_list)
     start_time = time.time()
 
-    # 3. 전체 ETF 목록을 순회하며 와이즈리포트에서 상위 1~5위 종목 수집
+    # 3. 전체 ETF 목록을 순회하며 와이즈리포트에서 상위 구성종목 수집
     for idx, etf in enumerate(etf_list, 1):
         code = etf.get("종목코드", "").strip()
         name = etf.get("종목명", "").strip()
@@ -144,11 +144,11 @@ def main():
         # 와이즈리포트 API로 포트폴리오 추출
         constituents = fetch_etf_portfolio(code)
 
-        # 💡 주도주 분석 핵심: 각 ETF에서 가장 비중이 큰 상위 N개(기본 1~5위) 종목만 자릅니다.
+        # 💡 주도주 분석 핵심: 각 ETF에서 가장 비중이 큰 상위 N개(기본 1~10위) 종목만 자릅니다.
         if args.top_n > 0:
             constituents = constituents[:args.top_n]
 
-        # 비율 순서대로 순번(1, 2, 3, 4, 5위) 부여하여 결과 저장
+        # 비율 순서대로 순번(1위~N위) 부여하여 결과 저장
         for seq, item in enumerate(constituents, 1):
             detailed_rows.append({
                 "종목코드": code,
@@ -156,20 +156,23 @@ def main():
                 "카테고리코드": cat_code,
                 "카테고리명": cat_name,
                 "상세페이지": detail_url,
-                "순번": seq,                    # 1위 ~ 5위 순위
+                "순번": seq,                    # 순위 (1~10위)
                 "구성종목명": item["구성종목명"],  # 구성 주식 종목명 (예: 삼성전자)
                 "비율": item["비율"]             # 편입 비중 (예: 21.34%)
             })
 
-        # 100개 단위로 진행 상황을 콘솔에 안내 출력
-        if idx % 100 == 0 or idx == total_etfs:
+        # 20개 단위 및 진행 과정에 대해 실시간 진행상황 로그 출력
+        if idx % 20 == 0 or idx == total_etfs or idx == 1:
             elapsed = time.time() - start_time
-            print(f"⏳ [{idx}/{total_etfs}] ETF 수집 진행 중... (누적 상위 종목 행: {len(detailed_rows)}개, 소요시간: {elapsed:.1f}초)")
+            pct = (idx / total_etfs) * 100
+            avg_per_item = elapsed / idx
+            remaining = (total_etfs - idx) * avg_per_item
+            print(f"⏳ [{idx:3d}/{total_etfs:3d}] ({pct:5.1f}%) | 처리중: [{code}] {name[:16]:<16} | 누적 구성종목: {len(detailed_rows):4d}개 | 경과: {elapsed:5.1f}초 (남은시간: 약 {remaining:4.1f}초)")
 
         # 서버 과부하 방지를 위한 짧은 대기시간
         time.sleep(args.delay)
 
-    print(f"\n✅ [수집 완료] 총 {total_etfs}개 ETF에서 {len(detailed_rows)}개의 주도주(상위 {top_n_label}) 데이터 수집 완료!")
+    print(f"\n✅ [수집 완료] 총 {total_etfs}개 ETF에서 {len(detailed_rows)}개의 주도주({top_n_label}) 데이터 수집 완료! (총 소요시간: {time.time() - start_time:.1f}초)")
 
     # 4. 수집한 결과를 `data/etf_dtl_list.csv` 파일로 저장
     if args.save_csv:

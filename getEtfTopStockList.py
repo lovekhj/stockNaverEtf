@@ -157,14 +157,87 @@ def main():
         print("💡 팁: 2단계 스크립트(getEtfDtlList.py)를 먼저 실행했는지 확인하세요.")
         sys.exit(1)
 
+SECTOR_RULES = [
+    ('반도체/소부장', [r'반도체', r'소부장', r'메모리', r'팹리스', r'파운드리']),
+    ('2차전지/배터리', [r'2차전지', r'배터리', r'양극재', r'음극재', r'리튬']),
+    ('바이오/헬스케어', [r'바이오', r'헬스케어', r'제약', r'신약', r'의료']),
+    ('조선/방산/중공업', [r'조선', r'방산', r'우주', r'항공', r'해운', r'중공업']),
+    ('금융/지주', [r'금융', r'은행', r'증권', r'보험', r'지주']),
+    ('자동차/모빌리티', [r'자동차', r'모빌리티', r'전장', r'부품', r'현대차그룹']),
+    ('IT/소프트웨어/AI', [r'소프트웨어', r'AI', r'인공지능', r'클라우드', r'플랫폼', r'게임', r'메타버스', r'IT']),
+    ('전력/에너지/원자력', [r'전력', r'원자력', r'신재생', r'태양광', r'수소', r'에너지', r'전선']),
+    ('철강/소재/화학', [r'철강', r'소재', r'화학', r'정유', r'석유']),
+    ('건설/인프라', [r'건설', r'인프라', r'토목']),
+    ('엔터/미디어/소비재', [r'엔터', r'미디어', r'K-POP', r'화장품', r'음식료', r'유통', r'패션', r'면세'])
+]
+
+STOCK_NAME_KEYWORDS = [
+    ('반도체/소부장', [r'반도체', r'칩', r'하이닉스', r'네오셈', r'가온칩스', r'자람테크', r'테크윙', r'와이씨', r'오픈엣지', r'디아이', r'제주반도체', r'에이직랜드', r'솔브레인', r'동진쎄미', r'하나마이크론', r'한미반도체', r'이오테크닉스', r'ISC', r'HPSP']),
+    ('2차전지/배터리', [r'에코프로', r'엘앤에프', r'엔켐', r'대주전자', r'나노신소재', r'윤성에프앤씨', r'피엔티', r'신흥에스이씨']),
+    ('바이오/헬스케어', [r'바이오', r'제약', r'셀트리온', r'유한양행', r'한미약품', r'알테오젠', r'오스코텍', r'펩트론', r'파마리서치', r'리가켐', r'휴젤', r'에스티팜', r'삼천당제약', r'케어젠', r'보로노이', r'클래시스', r'비올', r'원텍']),
+    ('조선/방산/중공업', [r'한화에어로', r'현대로템', r'LIG넥스원', r'풍산', r'한국항공우주', r'HD현대', r'삼성중공업', r'한화오션', r'현대미포', r'STX엔진']),
+    ('금융/지주', [r'금융', r'지주', r'은행', r'증권', r'보험', r'메리츠', r'삼성화재', r'DB손해보험', r'현대해상', r'키움증권']),
+    ('자동차/모빌리티', [r'현대차', r'기아', r'모비스', r'HL만도', r'에스엘', r'서연이화', r'화신', r'성우하이텍']),
+    ('IT/소프트웨어/AI', [r'NAVER', r'카카오', r'안랩', r'이스트소프트', r'폴라리스오피스', r'솔트룩스', r'마음AI', r'크래프톤', r'펄어비스', r'엔씨소프트', r'넷마블']),
+    ('전력/에너지/원자력', [r'한국전력', r'두산에너빌리티', r'HD현대일렉트릭', r'효성중공업', r'LS ELECTRIC', r'LS일렉트릭', r'대한전선', r'일진전기', r'제룡전기']),
+    ('철강/소재/화학', [r'POSCO', r'포스코', r'LG화학', r'롯데케미칼', r'금호석유', r'SK케미칼', r'SKC']),
+    ('건설/인프라', [r'대우건설', r'GS건설', r'DL이앤씨', r'HDC현대산업', r'계룡건설']),
+    ('엔터/미디어/소비재', [r'하이브', r'JYP', r'SM', r'YG', r'CJ ENM', r'스튜디오드래곤', r'아모레', r'코스맥스', r'한국콜마', r'APR', r'에이피알', r'삼양식품', r'농심', r'빙그레'])
+]
+
+def determine_sector(stk_name, stock_etfs):
+    """
+    ETF 편입 현황 및 종목명 키워드를 종합 분석하여 종목의 대표 섹터/테마를 판별합니다.
+    """
+    etfs = stock_etfs.get(stk_name, [])
+    counts = Counter()
+    for etf in etfs:
+        for sector_label, patterns in SECTOR_RULES:
+            if any(re.search(p, etf, re.IGNORECASE) for p in patterns):
+                counts[sector_label] += 1
+    if counts:
+        return counts.most_common(1)[0][0]
+    
+    for sector_label, patterns in STOCK_NAME_KEYWORDS:
+        if any(re.search(p, stk_name, re.IGNORECASE) for p in patterns):
+            return sector_label
+    return '일반 주도주'
+
+def main():
+    """
+    [3단계] 국내 주도주 종목 정제 및 코드 매핑 메인 실행 함수입니다.
+    """
+    default_input = "data/etf_dtl_list.csv" if os.path.exists("data/etf_dtl_list.csv") else "etf_dtl_list.csv"
+    
+    parser = argparse.ArgumentParser(description="[3단계] 주도주 종목 정제 및 6자리 종목코드 매핑 스크립트")
+    parser.add_argument("--input-csv", type=str, default=default_input, help=f"2단계에서 생성한 CSV 경로 (기본값: {default_input})")
+    parser.add_argument("--save-csv", type=str, default="data/etf_top_stocks.csv", help="저장할 CSV 파일 경로 (기본값: data/etf_top_stocks.csv)")
+    parser.add_argument("--include-rank", action="store_true", help="결과에 인기 순위 번호 포함 여부")
+    args = parser.parse_args()
+
+    # 1. 2단계 `data/etf_dtl_list.csv` 파일 불러오기
+    try:
+        with open(args.input_csv, "r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+    except Exception as e:
+        print(f"[❌ 오류] '{args.input_csv}' 파일을 읽는 도중 에러가 발생했습니다: {e}")
+        print("💡 팁: 2단계 스크립트(getEtfDtlList.py)를 먼저 실행했는지 확인하세요.")
+        sys.exit(1)
+
     print(f"\n🚀 [3단계] '{args.input_csv}' 파일에서 총 {len(rows)}개 구성종목 항목을 읽었습니다.")
 
-    # 2. 순수 주식 종목만 카운팅 (중복 제거 및 등장 횟수 집계)
+    # 각 종목별 편입된 업종/테마 ETF 목록 딕셔너리 구축
+    stock_etfs = {}
     stock_counter = Counter()
     for r in rows:
         stk_name = r.get("구성종목명", "").strip()
+        etf_name = r.get("종목명", "").strip()
+        cat_code = r.get("카테고리코드", "").strip()
         if is_valid_stock(stk_name):
             stock_counter[stk_name] += 1
+            if cat_code == "2": # 업종/테마 카테고리
+                stock_etfs.setdefault(stk_name, []).append(etf_name)
 
     # 가장 많이 ETF에 포함된 순서대로 정렬
     sorted_stocks = stock_counter.most_common()
@@ -174,14 +247,17 @@ def main():
     print("🔍 각 종목의 네이버 증권 6자리 종목코드 조회를 시작합니다...\n")
     
     result_rows = []
+    start_time = time.time()
     # 3. 선별된 종목마다 네이버 API를 통해 6자리 종목코드 및 상세페이지 주소 매핑
     for rank, (stk_name, count) in enumerate(sorted_stocks, 1):
         code = get_stock_code(stk_name)
+        sector = determine_sector(stk_name, stock_etfs)
         detail_url = f"https://stock.naver.com/domestic/stock/{code}/price" if code else ""
         
         row_dict = {
             "종목코드": code,
             "종목명": stk_name,
+            "섹터": sector,
             "상세페이지": detail_url
         }
         if args.include_rank:
@@ -189,18 +265,24 @@ def main():
             
         result_rows.append(row_dict)
 
-        # 진행 상황 안내 출력 (50개 단위)
-        if rank % 50 == 0 or rank == total_valid:
-            print(f"⏳ [{rank}/{total_valid}] 종목코드 매핑 진행 중... ({stk_name} -> {code})")
+        # 진행 상황 안내 출력 (20개 단위 및 1번째/마지막)
+        if rank % 20 == 0 or rank == total_valid or rank == 1:
+            elapsed = time.time() - start_time
+            pct = (rank / total_valid) * 100
+            avg_per_item = elapsed / rank
+            remaining = (total_valid - rank) * avg_per_item
+            code_display = code if code else "미발견"
+            print(f"⏳ [{rank:3d}/{total_valid:3d}] ({pct:5.1f}%) | 코드매핑: {stk_name[:14]:<14} ({sector:<12}) -> {code_display:<6} | 경과: {elapsed:5.1f}초 (남은시간: 약 {remaining:4.1f}초)")
+
         time.sleep(0.02)
 
     # 4. 콘솔 상위 25개 미리보기 출력
-    print("\n" + "=" * 80)
-    print(f"{'순위':<4} | {'종목코드':<8} | {'종목명':<20} | {'네이버 상세페이지 주소'}")
-    print("-" * 80)
+    print("\n" + "=" * 90)
+    print(f"{'순위':<4} | {'종목코드':<8} | {'종목명':<16} | {'섹터':<16} | {'네이버 상세페이지 주소'}")
+    print("-" * 90)
     for idx, r in enumerate(result_rows[:25], 1):
-        print(f"{idx:<4} | {r['종목코드']:<8} | {r['종목명']:<20} | {r['상세페이지']}")
-    print("=" * 80)
+        print(f"{idx:<4} | {r['종목코드']:<8} | {r['종목명']:<16} | {r['섹터']:<16} | {r['상세페이지']}")
+    print("=" * 90)
 
     # 5. 매핑 결과를 `data/etf_top_stocks.csv` 파일로 저장
     if args.save_csv:
