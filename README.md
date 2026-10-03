@@ -13,8 +13,9 @@ stock_naver/
 │   ├── etf_dtl_list.csv                  # ETF 상위 1~5위 구성종목 목록 (2,181개)
 │   └── etf_top_stocks.csv                # ETF 상위 6자리 주식 종목코드 매핑 (320개)
 │
-├── 분석_yyyymmdd/                         # 일단위 분석 결과 자동 생성 폴더 (예: 분석_20261003/)
-│   └── 분석_yyyymmdd.csv                  # 투자등급 및 이평선 포함 최종 수급 분석 결과
+├── 분석/                                 # 일별 수급 및 이동평균선 분석 결과 저장 폴더
+│   ├── 분석_20261003.csv                  # 10월 3일 분석 결과 (등급, 변동이유, 수급, 이평선)
+│   └── 분석_YYYYMMDD.csv                  # 매일 생성되는 날짜별 분석 CSV 파일
 │
 ├── docs/                                 # 프로젝트 세부 매뉴얼 문서
 │   ├── etf_분석.md                        # ETF 데이터 수집 파이프라인 명세서
@@ -23,7 +24,8 @@ stock_naver/
 ├── getEtfList.py                         # 1단계: ETF 기본 목록 수집 스크립트
 ├── getEtfDtlList.py                      # 2단계: ETF 상위 구성종목 수집 스크립트
 ├── getEtfTopStockList.py                 # 3단계: 주도주 6자리 종목코드 추출 스크립트
-└── getEtfInvestorFlow.py                 # 4단계: 수급 & 이동평균선 통합 분석 스크립트
+├── getEtfInvestorFlow.py                 # 4단계: 수급 & 이동평균선 통합 분석 스크립트
+└── main.py                               # 파이프라인 통합 대화형 실행기
 ```
 
 ---

@@ -168,27 +168,29 @@ import glob
 
 def find_latest_previous_file(today_str):
     """
-    현재 실행 날짜(today_str e.g. 20261003)보다 이전인 가장 최근의 분석 CSV 파일을 찾습니다.
+    현재 실행 날짜(today_str e.g. 20261003)보다 이전인 가장 최근의 분석 CSV 파일(분석/분석_YYYYMMDD.csv)을 찾습니다.
     """
-    analysis_folders = sorted(glob.glob("분석_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]"))
     prev_files = []
-    for folder in analysis_folders:
-        folder_name = os.path.basename(folder)
+    
+    # 1. 분석/ 폴더 내 분석_YYYYMMDD.csv 파일 탐색
+    pattern1 = os.path.join("분석", "분석_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].csv")
+    for csv_path in glob.glob(pattern1):
+        filename = os.path.basename(csv_path)
+        date_part = filename.replace("분석_", "").replace(".csv", "")
+        if date_part < today_str:
+            prev_files.append((date_part, csv_path))
+            
+    # 2. 기존 분석_YYYYMMDD/ 폴더 예전 경로 호환 탐색
+    pattern2 = os.path.join("분석_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]", "*.csv")
+    for csv_path in glob.glob(pattern2):
+        folder_name = os.path.basename(os.path.dirname(csv_path))
         date_part = folder_name.replace("분석_", "")
         if date_part < today_str:
-            csv_path = os.path.join(folder, f"분석_{date_part}.csv")
-            if os.path.exists(csv_path):
-                prev_files.append((date_part, csv_path))
+            prev_files.append((date_part, csv_path))
     
     if prev_files:
         prev_files.sort(key=lambda x: x[0], reverse=True)
         return prev_files[0][1]
-    
-    # 예전 통합 CSV 파일이 존재할 경우 fallback
-    if os.path.exists("data/etf_investor_flow.csv"):
-        return "data/etf_investor_flow.csv"
-    elif os.path.exists("etf_investor_flow.csv"):
-        return "etf_investor_flow.csv"
         
     return None
 
@@ -270,7 +272,7 @@ from datetime import datetime
 def main():
     today_str = datetime.now().strftime("%Y%m%d")
     default_input = "data/etf_top_stocks.csv" if os.path.exists("data/etf_top_stocks.csv") else "etf_top_stocks.csv"
-    default_save_dir = f"분석_{today_str}"
+    default_save_dir = "분석"
     default_save_csv = f"{default_save_dir}/분석_{today_str}.csv"
     
     auto_prev_csv = find_latest_previous_file(today_str)
@@ -390,8 +392,13 @@ def main():
     
     print(f"\n[분석 완료] 총 {total_stocks}개 종목 중 A+등급: {a_plus_count}개 / A등급: {a_count}개 (상향 종목: {upgraded_count}개 / 하향 종목: {downgraded_count}개)")
 
-    # CSV 저장 (분석_yyyymmdd/분석_yyyymmdd.csv 전용 저장)
+    # CSV 저장 (분석/분석_YYYYMMDD.csv 전용 저장)
     if args.save_csv:
+        fieldnames = [
+            "종목코드", "종목명", "투자등급", "등급변동", "변동이유", "현재가", "외국인보유율", "쌍끌이여부",
+            "외국인연속매수(일)", "기관연속매수(일)", "최근3일외인순매수", "최근3일기관순매수",
+            "20일선위", "정배열여부", "MA5", "MA20", "MA60", "MA120", "상세페이지"
+        ]
         save_dir = os.path.dirname(args.save_csv)
         if save_dir:
             os.makedirs(save_dir, exist_ok=True)
