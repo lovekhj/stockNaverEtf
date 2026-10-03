@@ -390,25 +390,16 @@ def main():
     
     print(f"\n[분석 완료] 총 {total_stocks}개 종목 중 A+등급: {a_plus_count}개 / A등급: {a_count}개 (상향 종목: {upgraded_count}개 / 하향 종목: {downgraded_count}개)")
 
-    # CSV 저장 (날짜별 폴더 및 동시 저장 처리)
-    fieldnames = [
-        "종목코드", "종목명", "투자등급", "등급변동", "변동이유", "현재가", "외국인보유율", "쌍끌이여부",
-        "외국인연속매수(일)", "기관연속매수(일)", "최근3일외인순매수", "최근3일기관순매수",
-        "20일선위", "정배열여부", "MA5", "MA20", "MA60", "MA120", "상세페이지"
-    ]
-
-    target_files = [args.save_csv, "etf_investor_flow.csv", "data/etf_investor_flow.csv"]
-    for target in target_files:
-        if not target:
-            continue
-        save_dir = os.path.dirname(target)
+    # CSV 저장 (분석_yyyymmdd/분석_yyyymmdd.csv 전용 저장)
+    if args.save_csv:
+        save_dir = os.path.dirname(args.save_csv)
         if save_dir:
             os.makedirs(save_dir, exist_ok=True)
-        with open(target, "w", encoding="utf-8-sig", newline="") as f:
+        with open(args.save_csv, "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(analyzed_rows)
-        print(f"[성공] 수급 분석 결과 저장이 완료되었습니다: {target}")
+        print(f"\n[성공] 일별 수급 및 이평선 분석 결과가 저장되었습니다: {args.save_csv}")
 
 if __name__ == "__main__":
     main()
