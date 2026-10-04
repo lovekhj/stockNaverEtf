@@ -138,10 +138,154 @@ class TeeLogger:
     def flush(self):
         self.terminal.flush()
 
+import csv
+import urllib.request
+import urllib.parse
+import json
+
+def load_env_file():
+    """
+    프로젝트 루트의 .env 파일이 존재하는 경우 환경 변수를 읽어오도록 지원하는 보조 함수
+    """
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        os.environ[k.strip()] = v.strip().strip("'").strip('"')
+        except Exception:
+            pass
+
+def send_telegram_notification(bot_token, chat_id, target_date=None):
+    """
+    분석 완료 후 A+ 등급 핵심 주도주 종목명을 텔레그램 메시지로 전송합니다.
+    """
+    if not bot_token or not chat_id:
+        print("\n⚠️ [텔레그램 경고] --telegram 옵션이 켜졌으나 TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID가 설정되지 않았습니다.")
+        print("💡 사용 방법: python3 main.py --step 4,5 --telegram --bot-token YOUR_TOKEN --chat-id YOUR_CHAT_ID (또는 .env 설정)")
+        return False
+
+    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+    if not target_date:
+        csv_files = [f for f in os.listdir(reports_dir) if f.startswith("report_") and f.endswith(".csv")]
+        if not csv_files:
+            print("⚠️ [텔레그램 경고] 전송할 분석 결과 CSV 파일(reports/report_*.csv)이 존재하지 않습니다.")
+            return False
+        csv_files.sort(reverse=True)
+        report_file = os.path.join(reports_dir, csv_files[0])
+    else:
+        report_file = os.path.join(reports_dir, f"report_{target_date}.csv")
+        if not os.path.exists(report_file):
+            print(f"⚠️ [텔레그램 경고] 분석 결과 파일 ({report_file})을 찾을 수 없습니다.")
+            return False
+
+    date_str = os.path.basename(report_file).replace("report_", "").replace(".csv", "")
+    
+    aplus_stocks = []
+    a_stocks = []
+    try:
+        with open(report_file, "r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                grade = row.get("투자등급", "").strip()
+                code = row.get("종목코드", "").strip()
+                name = row.get("종목명", "").strip()
+                sector = row.get("주요섹터", row.get("섹터", "")).strip()
+                price = row.get("현재가", "").strip()
+                
+                if grade == "A+":
+                    aplus_stocks.append((code, name, sector, price))
+                elif grade == "A":
+                    a_stocks.append((code, name, sector, price))
+    except Exception as e:
+        print(f"⚠️ [텔레그램 오류] CSV 읽기 실패: {e}")
+        return False
+
+    lines = [f"🚀 <b>[ETF 주도주 수급 분석 알림 - {date_str}]</b>", ""]
+    if aplus_stocks:
+        lines.append(f"🔥 <b>오늘 포착된 A+ 등급 핵심 주도주 ({len(aplus_stocks)}개):</b>")
+        for code, name, sector, price in aplus_stocks:
+            sec_info = f" ({sector})" if sector else ""
+            prc_info = f" - {price}원" if price else ""
+            lines.append(f"• <b>{name}</b> <code>[{code}]</code>{sec_info}{prc_info}")
+    else:
+        lines.append("ℹ️ 오늘 포착된 A+ 등급 종목이 없습니다. (관망 권장)")
+        
+    if a_stocks:
+        lines.append("")
+        lines.append(f"⭐ 참고: A 등급 우량주 {len(a_stocks)}개 포착")
+
+    message_text = "\n".join(lines)
+    
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": message_text,
+        "parse_mode": "HTML"
+    }
+    
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as response:
+            res_body = json.loads(response.read().decode("utf-8"))
+            if res_body.get("ok"):
+                print(f"📲 [텔레그램 전송 성공] A+ 등급 종목 알림 메시지가 성공적으로 전송되었습니다! (대상: {len(aplus_stocks)}개 종목)")
+                return True
+            else:
+                print(f"❌ [텔레그램 전송 실패] 응답 내용: {res_body}")
+                return False
+    except Exception as e:
+        print(f"❌ [텔레그램 전송 오류] API 호출 중 예외 발생: {e}")
+        return False
+
+def run_git_auto_push(target_date=None):
+    """
+    --push-git 옵션이 지정된 경우에만 git add reports/, git commit 및 git push를 전송합니다.
+    """
+    today_str = target_date or datetime.now().strftime("%Y%m%d")
+    commit_msg = f"auto: 4 PM report update ({today_str})"
+    print("\n" + "=" * 90)
+    print("🚀 [--push-git] 옵션 활성화: GitHub 원격 저장소로 자동 커밋 및 푸시를 실행합니다...")
+    print("=" * 90)
+    
+    try:
+        res_add = subprocess.run(["git", "add", "reports/", "docs/", "index.html", "style.css", "app.js", "main.py", "stockDesc1.html"], capture_output=True, text=True)
+        if res_add.returncode != 0:
+            print(f"⚠️ [Git Add 경고] {res_add.stderr}")
+            
+        res_commit = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True)
+        if res_commit.returncode != 0:
+            if "nothing to commit" in res_commit.stdout or "nothing to commit" in res_commit.stderr:
+                print("💡 [Git Info] 커밋할 변경 파일이 없습니다.")
+            else:
+                print(f"⚠️ [Git Commit 경고] {res_commit.stdout} {res_commit.stderr}")
+        else:
+            print(f"✅ [Git Commit 성공] 커밋 메시지: '{commit_msg}'")
+            
+        res_push = subprocess.run(["git", "push"], capture_output=True, text=True)
+        if res_push.returncode == 0:
+            print("🎉 [Git Push 성공] 원격 저장소(GitHub)로 전송이 완료되었습니다!")
+            return True
+        else:
+            print(f"❌ [Git Push 실패] 오류 내용: {res_push.stderr}")
+            return False
+    except Exception as e:
+        print(f"❌ [Git 실행 오류] 예외 발생: {e}")
+        return False
+
 def main():
     """
     통합 파이프라인 실행기의 메인 함수입니다.
     """
+    load_env_file()
+    
     parser = argparse.ArgumentParser(
         description="네이버 주식 ETF 주도주 수급 및 이동평균선(추세추종) 분석 파이프라인 통합 실행기"
     )
@@ -160,6 +304,13 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="스크립트별 처리 종목 수 제한 (테스트용)")
     parser.add_argument("--top-n", type=int, default=10, help="2단계 ETF당 상위 N개 종목 수집 (기본값: 10)")
     parser.add_argument("--date", type=str, help="분석 대상 거래일자 (YYYYMMDD 형식, 미지정 시 API 최신 마감 거래일 자동 감지)")
+
+    # 깃푸시 및 텔레그램 전송 옵션
+    parser.add_argument("--push-git", "--git", action="store_true", help="분석 완료 후 Git 커밋 및 Push를 자동으로 실행합니다. (기본값: False)")
+    parser.add_argument("--telegram", "--notify", action="store_true", help="분석 완료 후 A+ 등급 핵심 주도주 종목명을 텔레그램으로 전송합니다. (기본값: False)")
+    parser.add_argument("--bot-token", type=str, default=os.getenv("TELEGRAM_BOT_TOKEN", ""), help="텔레그램 봇 토큰 (기본값: TELEGRAM_BOT_TOKEN 환경변수)")
+    parser.add_argument("--chat-id", type=str, default=os.getenv("TELEGRAM_CHAT_ID", ""), help="텔레그램 대화방/채널 ID (기본값: TELEGRAM_CHAT_ID 환경변수)")
+
     args = parser.parse_args()
 
     steps_to_run = set()
@@ -213,6 +364,8 @@ def main():
     print("\n" + "=" * 90)
     print(f"📌 [파이프라인 실행 시작 시각: {today_str}] (로그 파일: {log_filepath})")
     print(f"📌 실행 대상 단계: {sorted(list(steps_to_run))}")
+    print(f"📌 깃 자동 푸시: {'활성화 (--push-git)' if args.push_git else '비활성화 (수동)'}")
+    print(f"📌 텔레그램 전송: {'활성화 (--telegram)' if args.telegram else '비활성화'}")
     print("=" * 90)
 
     # 선택된 단계 순차 실행
@@ -245,6 +398,14 @@ def main():
         if args.date:
             extra.extend(["--date", str(args.date)])
         run_step(5, "AI 추세추종 분석 마크다운 리포트 생성", "getEtfAiReport.py", extra)
+
+    # 📲 텔레그램 알림 발송 옵션이 지정된 경우
+    if args.telegram:
+        send_telegram_notification(args.bot_token, args.chat_id, target_date=args.date)
+
+    # 🚀 Git 커밋 및 Push 옵션이 지정된 경우
+    if args.push_git:
+        run_git_auto_push(target_date=args.date)
 
     total_elapsed = time.time() - total_start
     finish_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
