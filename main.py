@@ -164,23 +164,26 @@ def send_telegram_notification(bot_token, chat_id, target_date=None):
     분석 완료 후 A+ 등급 핵심 주도주 종목명을 텔레그램 메시지로 전송합니다.
     """
     if not bot_token or not chat_id:
-        print("\n⚠️ [텔레그램 경고] --telegram 옵션이 켜졌으나 TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID가 설정되지 않았습니다.")
+        msg = "TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 미설정"
+        print(f"\n⚠️ [텔레그램 경고] --telegram 옵션이 켜졌으나 {msg} 상태입니다.")
         print("💡 사용 방법: python3 main.py --step 4,5 --telegram --bot-token YOUR_TOKEN --chat-id YOUR_CHAT_ID (또는 .env 설정)")
-        return False
+        return False, msg
 
     reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
     if not target_date:
         csv_files = [f for f in os.listdir(reports_dir) if f.startswith("report_") and f.endswith(".csv")]
         if not csv_files:
-            print("⚠️ [텔레그램 경고] 전송할 분석 결과 CSV 파일(reports/report_*.csv)이 존재하지 않습니다.")
-            return False
+            msg = "분석 결과 CSV 파일 없음"
+            print(f"⚠️ [텔레그램 경고] {msg}")
+            return False, msg
         csv_files.sort(reverse=True)
         report_file = os.path.join(reports_dir, csv_files[0])
     else:
         report_file = os.path.join(reports_dir, f"report_{target_date}.csv")
         if not os.path.exists(report_file):
-            print(f"⚠️ [텔레그램 경고] 분석 결과 파일 ({report_file})을 찾을 수 없습니다.")
-            return False
+            msg = f"분석 파일 ({report_file}) 없음"
+            print(f"⚠️ [텔레그램 경고] {msg}")
+            return False, msg
 
     date_str = os.path.basename(report_file).replace("report_", "").replace(".csv", "")
     
@@ -201,8 +204,9 @@ def send_telegram_notification(bot_token, chat_id, target_date=None):
                 elif grade == "A":
                     a_stocks.append((code, name, sector, price))
     except Exception as e:
-        print(f"⚠️ [텔레그램 오류] CSV 읽기 실패: {e}")
-        return False
+        msg = f"CSV 읽기 예외 ({e})"
+        print(f"⚠️ [텔레그램 오류] {msg}")
+        return False, msg
 
     lines = [f"🚀 <b>[ETF 주도주 수급 분석 알림 - {date_str}]</b>", ""]
     if aplus_stocks:
@@ -236,14 +240,17 @@ def send_telegram_notification(bot_token, chat_id, target_date=None):
         with urllib.request.urlopen(req, timeout=10) as response:
             res_body = json.loads(response.read().decode("utf-8"))
             if res_body.get("ok"):
-                print(f"📲 [텔레그램 전송 성공] A+ 등급 종목 알림 메시지가 성공적으로 전송되었습니다! (대상: {len(aplus_stocks)}개 종목)")
-                return True
+                desc = f"A+ 등급 {len(aplus_stocks)}개 전송 완료"
+                print(f"📲 [텔레그램 전송 성공] {desc}")
+                return True, desc
             else:
+                desc = f"API 실패 ({res_body})"
                 print(f"❌ [텔레그램 전송 실패] 응답 내용: {res_body}")
-                return False
+                return False, desc
     except Exception as e:
-        print(f"❌ [텔레그램 전송 오류] API 호출 중 예외 발생: {e}")
-        return False
+        desc = f"네트워크/API 예외 발생 ({e})"
+        print(f"❌ [텔레그램 전송 오류] {desc}")
+        return False, desc
 
 def run_git_auto_push(target_date=None):
     """
@@ -261,8 +268,10 @@ def run_git_auto_push(target_date=None):
             print(f"⚠️ [Git Add 경고] {res_add.stderr}")
             
         res_commit = subprocess.run(["git", "commit", "-m", commit_msg], capture_output=True, text=True)
+        is_clean = False
         if res_commit.returncode != 0:
             if "nothing to commit" in res_commit.stdout or "nothing to commit" in res_commit.stderr:
+                is_clean = True
                 print("💡 [Git Info] 커밋할 변경 파일이 없습니다.")
             else:
                 print(f"⚠️ [Git Commit 경고] {res_commit.stdout} {res_commit.stderr}")
@@ -271,14 +280,17 @@ def run_git_auto_push(target_date=None):
             
         res_push = subprocess.run(["git", "push"], capture_output=True, text=True)
         if res_push.returncode == 0:
-            print("🎉 [Git Push 성공] 원격 저장소(GitHub)로 전송이 완료되었습니다!")
-            return True
+            desc = "변경 파일 없음 (최신)" if is_clean else f"Push 완료 ({commit_msg})"
+            print(f"🎉 [Git Push 성공] {desc}")
+            return True, desc
         else:
-            print(f"❌ [Git Push 실패] 오류 내용: {res_push.stderr}")
-            return False
+            desc = f"Push 실패 ({res_push.stderr.strip()})"
+            print(f"❌ [Git Push 실패] {desc}")
+            return False, desc
     except Exception as e:
-        print(f"❌ [Git 실행 오류] 예외 발생: {e}")
-        return False
+        desc = f"Git 실행 예외 ({e})"
+        print(f"❌ [Git 실행 오류] {desc}")
+        return False, desc
 
 def main():
     """
@@ -399,20 +411,30 @@ def main():
             extra.extend(["--date", str(args.date)])
         run_step(5, "AI 추세추종 분석 마크다운 리포트 생성", "getEtfAiReport.py", extra)
 
+    telegram_status_msg = "미실행 (옵션 --telegram 미사용)"
+    git_status_msg = "미실행 (옵션 --push-git 미사용)"
+
     # 📲 텔레그램 알림 발송 옵션이 지정된 경우
     if args.telegram:
-        send_telegram_notification(args.bot_token, args.chat_id, target_date=args.date)
+        print("\n" + "=" * 90)
+        print("📲 [--telegram] 옵션 활성화: A+ 등급 핵심 주도주 텔레그램 알림 메시지 발송을 진행합니다...")
+        print("=" * 90)
+        success, tg_desc = send_telegram_notification(args.bot_token, args.chat_id, target_date=args.date)
+        telegram_status_msg = f"{'성공' if success else '실패/경고'} ({tg_desc})"
 
     # 🚀 Git 커밋 및 Push 옵션이 지정된 경우
     if args.push_git:
-        run_git_auto_push(target_date=args.date)
+        success, git_desc = run_git_auto_push(target_date=args.date)
+        git_status_msg = f"{'성공' if success else '경고/실패'} ({git_desc})"
 
     total_elapsed = time.time() - total_start
     finish_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print("\n" + "=" * 90)
     print(f"🎉 [파이프라인 종료 시각: {finish_str}] 모든 파이프라인 단계 실행 완료!")
-    print(f"⏱️ 전체 소요시간: {total_elapsed:.1f}초")
-    print(f"📁 실행 로그 저장 위치: reports/log_{today_ymd}.txt")
+    print(f"⏱️  전체 소요시간: {total_elapsed:.1f}초")
+    print(f"📁 실행 로그 파일: reports/log_{today_ymd}.txt")
+    print(f"📲 텔레그램 알림: {telegram_status_msg}")
+    print(f"🚀 Git Auto-Push: {git_status_msg}")
     print("=" * 90)
 
 if __name__ == "__main__":
