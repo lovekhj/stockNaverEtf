@@ -16,10 +16,13 @@
    - [4단계] `getEtfInvestorFlow.py`: 외인/기관 수급 & 이동평균선(MA) 통합 분석 -> reports/report_YYYYMMDD.csv
    - [5단계] `getEtfAiReport.py`  : AI 추세추종 종합 분석 마크다운 리포트 자동 생성 -> reports/report_YYYYMMDD.md
 
-3. 주요 실행 방법:
-   - 대화형 메뉴 (추천) : `python3 main.py` 실행 후 엔터(기본값 4+5단계 자동실행) 또는 번호 선택
-   - 전체 자동 실행     : `python3 main.py --all` (1단계부터 5단계까지 전체 순차 실행)
-   - 특정 단계만 실행   : `python3 main.py --step 5` 또는 `python3 main.py --step 4,5`
+3. 주요 실행 방법 및 옵션 조합:
+   - 대화형 메뉴 (추천) : `python3 main.py` (엔터 치면 기본 4+5단계 실행)
+   - 전체 파이프라인    : `python3 main.py --all` (1단계부터 5단계까지 순차 실행)
+   - 특정 단계 지정     : `python3 main.py --step 4,5`
+   - 텔레그램 알림 발송 : `python3 main.py --telegram` (포착된 A+ 등급 종목만 전송)
+   - 깃허브 자동 푸시   : `python3 main.py --push-git` (리포트/결과 파일 GitHub Push)
+   - 맥 4시 자동스케줄er: `python3 main.py --step 4,5 --telegram --push-git` (통합 실행)
 ================================================================================
 """
 
