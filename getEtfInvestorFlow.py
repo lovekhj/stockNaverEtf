@@ -154,6 +154,7 @@ def fetch_moving_averages(code):
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
+    chg_rate = "0.00%"
     # 1페이지당 60개씩 총 2페이지(120일분) 수집
     for page in (1, 2):
         url = f"https://m.stock.naver.com/api/stock/{code}/price?page={page}&pageSize=60"
@@ -162,6 +163,17 @@ def fetch_moving_averages(code):
             with urllib.request.urlopen(req) as res:
                 data = json.loads(res.read().decode("utf-8"))
                 p_list = data if isinstance(data, list) else data.get("result", [])
+                if page == 1 and p_list and len(p_list) > 0:
+                    item0 = p_list[0]
+                    ratio = item0.get("fluctuationsRatio", "0.00")
+                    chg_info = item0.get("compareToPreviousPrice", {})
+                    chg_code = chg_info.get("code", "3")
+                    if chg_code == "2":
+                        chg_rate = f"+{ratio}%"
+                    elif chg_code == "5":
+                        chg_rate = f"-{ratio}%"
+                    else:
+                        chg_rate = f"{ratio}%"
                 for item in p_list:
                     cp_str = item.get("closePrice", "0").replace(',', '').strip()
                     if cp_str.isdigit() and int(cp_str) > 0:
@@ -190,6 +202,7 @@ def fetch_moving_averages(code):
 
     return {
         "current_price": current_price,
+        "chg_rate": chg_rate,
         "above_ma20": above_ma20,
         "is_aligned": is_aligned,
         "ma5": ma5,
@@ -425,6 +438,7 @@ def main():
             "종목명": name,
             "섹터": sector,
             "투자등급": current_grade,
+            "등락률": ma_info.get("chg_rate", "0.00%"),
             "등급변동": grade_change,
             "변동이유": change_reason,
             "현재가": curr_price_str,
@@ -480,7 +494,7 @@ def main():
     # 5. `분석/분석_YYYYMMDD.csv` 파일 저장
     if save_csv_path:
         fieldnames = [
-            "종목코드", "종목명", "섹터", "투자등급", "등급변동", "변동이유", "현재가", "외국인보유율", "쌍끌이여부",
+            "종목코드", "종목명", "섹터", "투자등급", "등락률", "등급변동", "변동이유", "현재가", "외국인보유율", "쌍끌이여부",
             "외국인연속매수(일)", "기관연속매수(일)", "최근3일외인순매수", "최근3일기관순매수",
             "20일선위", "정배열여부", "20일이격도", "과열여부", "추세단계", "추천매수가",
             "MA5", "MA20", "MA60", "MA120", "상세페이지"

@@ -382,7 +382,7 @@ def run_git_auto_push(target_date=None):
     print("=" * 90)
     
     try:
-        res_add = subprocess.run(["git", "add", "reports/", "pdf/", "docs/", "index.html", "style.css", "app.js", "main.py", "stockDesc1.html", "getEtfAiReport.py"], capture_output=True, text=True)
+        res_add = subprocess.run(["git", "add", "-A"], capture_output=True, text=True)
         if res_add.returncode != 0:
             print(f"⚠️ [Git Add 경고] {res_add.stderr}")
             
