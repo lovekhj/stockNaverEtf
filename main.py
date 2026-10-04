@@ -253,9 +253,10 @@ def send_telegram_notification(bot_token, chat_id, target_date=None, send_pdf=Fa
 
     date_str = os.path.basename(report_file).replace("report_", "").replace(".csv", "")
     
-    # 3. CSV 파일 읽어 A+ 등급 주도주 추출
+    # 3. CSV 파일 읽어 A+ 등급 주도주 추출 및 섹터 모멘텀 산출
     aplus_stocks = []
     a_stocks = []
+    sector_scores = {}
     try:
         with open(report_file, "r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
@@ -263,24 +264,67 @@ def send_telegram_notification(bot_token, chat_id, target_date=None, send_pdf=Fa
                 grade = row.get("투자등급", "").strip()
                 code = row.get("종목코드", "").strip()
                 name = row.get("종목명", "").strip()
-                sector = row.get("주요섹터", row.get("섹터", "")).strip()
+                sector = row.get("주요섹터", row.get("섹터", "")).strip() or "일반 주도주"
+                overheat = row.get("과열여부", "적정(안전)").strip() or "적정(안전)"
+                phase = row.get("추세단계", "정배열가속(A+)").strip() or "정배열가속(A+)"
                 price = row.get("현재가", "").strip()
+                chg = row.get("등락률", "").strip()
+
+                if sector not in sector_scores:
+                    sector_scores[sector] = {"aplus": 0, "a": 0, "score": 0.0}
+                if grade == "A+":
+                    sector_scores[sector]["aplus"] += 1
+                    sector_scores[sector]["score"] += 3.0
+                elif grade == "A":
+                    sector_scores[sector]["a"] += 1
+                    sector_scores[sector]["score"] += 1.0
+                
+                # CSV에 등락률이 없는 경우 네이버 API에서 실시간 등락률 보충
+                if grade == "A+" and not chg and code:
+                    try:
+                        u_tmp = f"https://m.stock.naver.com/api/stock/{code}/price?page=1&pageSize=1"
+                        req_t = urllib.request.Request(u_tmp, headers={"User-Agent": "Mozilla/5.0"})
+                        with urllib.request.urlopen(req_t, timeout=3) as res_t:
+                            d_t = json.loads(res_t.read().decode("utf-8"))
+                            item_t = d_t[0] if isinstance(d_t, list) else d_t.get("result", [])[0]
+                            ratio_t = item_t.get("fluctuationsRatio", "0.00")
+                            code_t = item_t.get("compareToPreviousPrice", {}).get("code", "3")
+                            if code_t == "2":
+                                chg = f"+{ratio_t}%"
+                            elif code_t == "5":
+                                chg = f"-{ratio_t}%"
+                            else:
+                                chg = f"{ratio_t}%"
+                    except Exception:
+                        chg = ""
                 
                 if grade == "A+":
-                    aplus_stocks.append((code, name, sector, price))
+                    aplus_stocks.append((code, name, sector, overheat, phase, price, chg))
                 elif grade == "A":
-                    a_stocks.append((code, name, sector, price))
+                    a_stocks.append((code, name, sector, overheat, phase, price, chg))
     except Exception as e:
         msg = f"CSV 읽기 예외 ({e})"
         print(f"⚠️ [텔레그램 오류] {msg}")
         return False, msg
 
-    # 4. 요약 텍스트 메세지 내용 조립 (종목명 - 섹터)
+    top_sectors = sorted(sector_scores.items(), key=lambda x: (x[1]["score"], x[1]["aplus"], x[1]["a"]), reverse=True)[:3]
+
+    # 4. 요약 텍스트 메세지 내용 조립
     lines = [f"🚀 <b>[A+ 주도주 알림 - {date_str}]</b>", ""]
+    
+    if top_sectors:
+        lines.append("🔥 <b>[오늘의 TOP 주도 섹터]</b>")
+        for rank, (sec, s_info) in enumerate(top_sectors, 1):
+            lines.append(f"  {rank}위: <b>{sec}</b> (A+ {s_info['aplus']}개 / A {s_info['a']}개)")
+        lines.append("")
+
+    lines.append("🏆 <b>[A+ 핵심 주도주 목록]</b>")
     if aplus_stocks:
-        for code, name, sector, price in aplus_stocks:
-            sec_info = sector if sector else "기타"
-            lines.append(f"• <b>{name}</b> - {sec_info}")
+        for idx, (code, name, sector, overheat, phase, price, chg) in enumerate(aplus_stocks, 1):
+            sec_info = sector if sector else "일반 주도주"
+            prc_info = f"{price}원" if price and not price.endswith("원") else (price if price else "0원")
+            chg_info = chg if chg else "-"
+            lines.append(f"{idx}. <b>{name}</b> / {sec_info} / {overheat} / {phase} / {prc_info} / {chg_info}")
     else:
         lines.append("ℹ️ 오늘 포착된 A+ 등급 종목이 없습니다.")
 

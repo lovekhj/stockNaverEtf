@@ -347,22 +347,34 @@ function renderSectorGrid() {
     if (d.투자등급 === "A") sectorCounts[sec].a++;
   });
 
-  // 종목수 많은 순으로 정렬
-  const sortedSectors = Object.entries(sectorCounts).sort((a, b) => b[1].total - a[1].total);
+  // 섹터 모멘텀 점수(A+ * 3.0 + A * 1.0) 순으로 정렬하여 주도 섹터 하이라이트
+  const sortedSectors = Object.entries(sectorCounts).sort((a, b) => {
+    const scoreA = (a[1].aplus * 3.0) + (a[1].a * 1.0) + (a[1].total * 0.01);
+    const scoreB = (b[1].aplus * 3.0) + (b[1].a * 1.0) + (b[1].total * 0.01);
+    return scoreB - scoreA;
+  });
 
-  sortedSectors.forEach(([secName, counts]) => {
+  sortedSectors.forEach(([secName, counts], idx) => {
     const card = document.createElement("div");
     card.className = "sector-card";
+    if (idx < 3) {
+      card.style.borderColor = "var(--color-gold, #f59e0b)";
+      card.style.boxShadow = "0 0 12px rgba(245, 158, 11, 0.15)";
+    }
     card.onclick = () => filterBySectorCard(secName);
     
+    const rankBadge = idx === 0 ? "🥇 1위 주도섹터" : (idx === 1 ? "🥈 2위 주도섹터" : (idx === 2 ? "🥉 3위 주도섹터" : ""));
+    const rankHtml = rankBadge ? `<span style="font-size:0.75rem; font-weight:700; color:#f59e0b; margin-bottom:4px; display:block;">${rankBadge}</span>` : "";
+
     card.innerHTML = `
+      ${rankHtml}
       <div class="sector-card-top">
-        <span class="sector-name">${secName}</span>
+        <span class="sector-name" style="font-weight:700;">${secName}</span>
         <span class="sector-total-badge">${counts.total}개 종목</span>
       </div>
-      <div class="sector-pills">
-        <div class="sector-pill-item aplus">🔥 A+ ${counts.aplus}개</div>
-        <div class="sector-pill-item a">⭐ A ${counts.a}개</div>
+      <div class="sector-pills" style="margin-top:6px;">
+        <div class="sector-pill-item aplus" style="font-weight:600;">🔥 A+ ${counts.aplus}개</div>
+        <div class="sector-pill-item a" style="font-weight:600;">⭐ A ${counts.a}개</div>
       </div>
     `;
     container.appendChild(card);
@@ -401,7 +413,7 @@ function renderHighlights() {
   if (aplusTbody) {
     aplusTbody.innerHTML = "";
     if (aplusList.length === 0) {
-      aplusTbody.innerHTML = `<tr><td colspan="14" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">A+ 등급 조건(쌍끌이+20일선위+정배열)을 만족하는 종목이 없습니다.</td></tr>`;
+      aplusTbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">A+ 등급 조건(쌍끌이+20일선위+정배열)을 만족하는 종목이 없습니다.</td></tr>`;
     } else {
       aplusList.forEach(row => {
         const tr = document.createElement("tr");
@@ -419,6 +431,9 @@ function renderHighlights() {
           overheatBadge = '<span style="color:#6366f1; font-weight:600;"><i class="fa-solid fa-arrow-trend-down"></i> 이격과도</span>';
         }
 
+        const rateVal = row.등락률 || "-";
+        const rateColor = rateVal.includes('+') ? '#ef4444' : (rateVal.includes('-') ? '#3b82f6' : 'var(--text-main)');
+
         tr.innerHTML = `
           <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
           <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
@@ -428,6 +443,7 @@ function renderHighlights() {
           <td><span class="stock-sector-tag" style="background: rgba(255,255,255,0.06); color: var(--text-main); font-weight: 600;">${row.추세단계 || "정배열가속(A+)"}</span></td>
           <td><strong style="color: var(--color-aplus); font-size: 0.85rem;">${row.추천매수가 || `${row.현재가}원`}</strong></td>
           <td><strong>${row.현재가}원</strong></td>
+          <td><strong style="color: ${rateColor};">${rateVal}</strong></td>
           <td>${dualBadge}</td>
           <td>${row.외국인연속 || row["외국인연속매수(일)"] || 0}일</td>
           <td>${row.기관연속 || row["기관연속매수(일)"] || 0}일</td>
@@ -448,13 +464,16 @@ function renderHighlights() {
   if (upgradedTbody) {
     upgradedTbody.innerHTML = "";
     if (upgradedList.length === 0) {
-      upgradedTbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">A+ 등급으로 승격되거나 신규 포착된 종목이 없습니다.</td></tr>`;
+      upgradedTbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">A+ 등급으로 승격되거나 신규 포착된 종목이 없습니다.</td></tr>`;
     } else {
       upgradedList.forEach(row => {
         const tr = document.createElement("tr");
         const dualBadge = row.쌍끌이여부 === "O" 
           ? '<span class="badge-dual yes">쌍끌이</span>' 
           : '<span class="badge-dual no">-</span>';
+
+        const rateVal = row.등락률 || "-";
+        const rateColor = rateVal.includes('+') ? '#ef4444' : (rateVal.includes('-') ? '#3b82f6' : 'var(--text-main)');
 
         tr.innerHTML = `
           <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
@@ -463,6 +482,7 @@ function renderHighlights() {
           <td><strong style="color: var(--color-upgraded);">${row.등급변동}</strong></td>
           <td><span style="font-size:0.82rem; color:var(--text-muted);">${row.변동이유}</span></td>
           <td><strong>${row.현재가}원</strong></td>
+          <td><strong style="color: ${rateColor};">${rateVal}</strong></td>
           <td>${dualBadge}</td>
           <td>${row["20일선위"] === "O" ? "🟢 O" : "🔴 X"}</td>
           <td><a href="${row.상세페이지}" target="_blank" class="link-naver">네이버 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.75rem;"></i></a></td>
@@ -481,13 +501,16 @@ function renderHighlights() {
   if (downgradedTbody) {
     downgradedTbody.innerHTML = "";
     if (downgradedList.length === 0) {
-      downgradedTbody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">이전 거래일 대비 A+ 등급에서 하향 조정된 리스크 관리 주의 종목이 없습니다.</td></tr>`;
+      downgradedTbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">이전 거래일 대비 A+ 등급에서 하향 조정된 리스크 관리 주의 종목이 없습니다.</td></tr>`;
     } else {
       downgradedList.forEach(row => {
         const tr = document.createElement("tr");
         const dualBadge = row.쌍끌이여부 === "O" 
           ? '<span class="badge-dual yes">쌍끌이</span>' 
           : '<span class="badge-dual no">-</span>';
+
+        const rateVal = row.등락률 || "-";
+        const rateColor = rateVal.includes('+') ? '#ef4444' : (rateVal.includes('-') ? '#3b82f6' : 'var(--text-main)');
 
         tr.innerHTML = `
           <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
@@ -496,6 +519,7 @@ function renderHighlights() {
           <td><strong style="color: #ef4444;">${row.등급변동}</strong></td>
           <td><span style="font-size:0.82rem; color:var(--text-muted);">${row.변동이유}</span></td>
           <td><strong>${row.현재가}원</strong></td>
+          <td><strong style="color: ${rateColor};">${rateVal}</strong></td>
           <td>${dualBadge}</td>
           <td>${row["20일선위"] === "O" ? "🟢 O" : "🔴 X"}</td>
           <td><a href="${row.상세페이지}" target="_blank" class="link-naver">네이버 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.75rem;"></i></a></td>

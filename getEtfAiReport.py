@@ -154,15 +154,24 @@ def generate_ai_report(csv_path):
     sector_aplus = Counter(r.get('섹터', '일반 주도주') for r in a_plus_list)
     sector_a = Counter(r.get('섹터', '일반 주도주') for r in a_list)
 
-    md.append(f"### 🏭 주요 섹터/테마별 A+/A 주도주 수급 현황")
-    md.append(f"| 대표 섹터/테마 | A+ 등급 | A 등급 | 전체 종목수 | 주요 A+ 주도주 |")
-    md.append(f"| :--- | :---: | :---: | :---: | :--- |")
-    for sec_name, total_sec in sector_counter.most_common():
+    # 섹터 모멘텀 순위 계산 (A+ * 3.0 + A * 1.0)
+    sorted_sectors = sorted(
+        sector_counter.keys(),
+        key=lambda s: ((sector_aplus.get(s, 0) * 3.0) + (sector_a.get(s, 0) * 1.0), sector_aplus.get(s, 0), sector_a.get(s, 0)),
+        reverse=True
+    )
+
+    md.append(f"### 🏭 주요 섹터/테마별 A+/A 주도주 수급 현황 (모멘텀 순위)")
+    md.append(f"| 순위 | 대표 섹터/테마 | A+ 등급 | A 등급 | 전체 종목수 | 주요 A+ 주도주 |")
+    md.append(f"| :---: | :--- | :---: | :---: | :---: | :--- |")
+    for idx, sec_name in enumerate(sorted_sectors, 1):
+        total_sec = sector_counter.get(sec_name, 0)
         ap_cnt = sector_aplus.get(sec_name, 0)
         a_cnt = sector_a.get(sec_name, 0)
         top_names = [r['종목명'] for r in a_plus_list if r.get('섹터') == sec_name][:3]
         top_str = ", ".join(top_names) if top_names else "-"
-        md.append(f"| **{sec_name}** | **{ap_cnt}개** | {a_cnt}개 | {total_sec}개 | {top_str} |")
+        rank_badge = "🥇 1위" if idx == 1 else ("🥈 2위" if idx == 2 else ("🥉 3위" if idx == 3 else f"{idx}위"))
+        md.append(f"| {rank_badge} | **{sec_name}** | **{ap_cnt}개** | {a_cnt}개 | {total_sec}개 | {top_str} |")
     md.append(f"")
 
     # 등급 변동 현황
@@ -283,11 +292,20 @@ def generate_ai_report(csv_path):
 
 def generate_pdf_report(csv_path):
     """
-    CSV 분석 데이터를 바탕으로 가독성 우수한 PDF 리포트(`reports/report_YYYYMMDD.pdf`)를 생성합니다.
+    ============================================================================
+    📌 [웹 대시보드 스타일] PDF 리포트 자동 생성 함수 (pdf/report_YYYYMMDD.pdf)
+    ============================================================================
+    1. 구성 요소 (요청사항 반영):
+       - [표 1] 🔥 A+ 등급 핵심 주도주 (정배열 대세상승)
+       - [표 2] 🚀 신규 승격 & A+ 등급 상향 종목
+       - [표 3] 🔻 A+ 등급 하향 & 리스크 관리 주의 종목
+       - [설명 1] 📈 등급 분포 및 수급 현황 산출 기준
+       - [설명 2] 🎯 20일 이격도 & 과열 판정 가이드
+       - [설명 3] 🛡️ AI 추세추종 매매 실전 전략 수칙
     """
     try:
         from reportlab.lib.pagesizes import A4
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, KeepTogether
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib import colors
         from reportlab.pdfbase import pdfmetrics
@@ -329,18 +347,22 @@ def generate_pdf_report(csv_path):
     if total_count == 0:
         return False
 
+    # 1. 투자등급 및 변동 데이터 분류
     a_plus_list = [r for r in rows if r.get('투자등급') == 'A+']
     a_list = [r for r in rows if r.get('투자등급') == 'A']
     b_list = [r for r in rows if r.get('투자등급') == 'B']
     c_list = [r for r in rows if r.get('투자등급') == 'C']
 
+    upgraded_list = [r for r in rows if r.get('투자등급') == 'A+' and ('상향' in r.get('등급변동', '') or 'NEW' in r.get('등급변동', ''))]
+    downgraded_list = [r for r in rows if 'A+ ->' in r.get('등급변동', '') or 'A+ →' in r.get('등급변동', '') or ('하향' in r.get('등급변동', '') and 'A+' in r.get('변동이유', ''))]
+
     doc = SimpleDocTemplate(
         pdf_path,
         pagesize=A4,
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=30,
-        bottomMargin=30
+        rightMargin=25,
+        leftMargin=25,
+        topMargin=25,
+        bottomMargin=25
     )
 
     styles = getSampleStyleSheet()
@@ -348,17 +370,22 @@ def generate_pdf_report(csv_path):
     title_style = ParagraphStyle(
         'PdfTitle', parent=styles['Heading1'],
         fontName='AppleGothic', fontSize=15, leading=19,
-        textColor=colors.HexColor('#0f172a'), spaceAfter=6
+        textColor=colors.HexColor('#0f172a'), spaceAfter=4
     )
     meta_style = ParagraphStyle(
         'PdfMeta', parent=styles['Normal'],
         fontName='AppleGothic', fontSize=8.5, leading=12,
-        textColor=colors.HexColor('#475569'), spaceAfter=10
+        textColor=colors.HexColor('#475569'), spaceAfter=8
     )
     section_style = ParagraphStyle(
         'PdfSection', parent=styles['Heading2'],
         fontName='AppleGothic', fontSize=11, leading=15,
-        textColor=colors.HexColor('#1e293b'), spaceBefore=10, spaceAfter=5
+        textColor=colors.HexColor('#1e293b'), spaceBefore=10, spaceAfter=4
+    )
+    section_desc = ParagraphStyle(
+        'PdfSecDesc', parent=styles['Normal'],
+        fontName='AppleGothic', fontSize=8, leading=11,
+        textColor=colors.HexColor('#64748b'), spaceAfter=6
     )
     normal_style = ParagraphStyle(
         'PdfNormal', parent=styles['Normal'],
@@ -367,7 +394,7 @@ def generate_pdf_report(csv_path):
     )
     th_style = ParagraphStyle(
         'PdfTH', parent=styles['Normal'],
-        fontName='AppleGothic', fontSize=8, leading=10,
+        fontName='AppleGothic', fontSize=7.5, leading=10,
         textColor=colors.white, alignment=1
     )
     td_style = ParagraphStyle(
@@ -385,105 +412,255 @@ def generate_pdf_report(csv_path):
         fontName='AppleGothic', fontSize=7.5, leading=10,
         textColor=colors.HexColor('#1e293b'), alignment=0
     )
+    td_red = ParagraphStyle(
+        'PdfTDRed', parent=styles['Normal'],
+        fontName='AppleGothic', fontSize=7.5, leading=10,
+        textColor=colors.HexColor('#dc2626'), alignment=1
+    )
+    td_blue = ParagraphStyle(
+        'PdfTDBlue', parent=styles['Normal'],
+        fontName='AppleGothic', fontSize=7.5, leading=10,
+        textColor=colors.HexColor('#2563eb'), alignment=1
+    )
 
     story = []
     
-    # Title & Header
+    # Header Banner
     story.append(Paragraph('📊 ETF 주도주 수급 & 추세추종 AI 종합 분석 리포트', title_style))
-    story.append(HRFlowable(width='100%', thickness=1.5, color=colors.HexColor('#2563eb'), spaceAfter=8))
+    story.append(HRFlowable(width='100%', thickness=1.5, color=colors.HexColor('#2563eb'), spaceAfter=6))
     
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    meta_text = f"<b>분석 일자</b>: {date_part[:4]}-{date_part[4:6]}-{date_part[6:8]} | <b>생성 일시</b>: {now_str} | <b>분석 종목</b>: 총 {total_count:,}개 주도주"
+    meta_text = f"<b>분석 일자</b>: {date_part[:4]}-{date_part[4:6]}-{date_part[6:8]} | <b>생성 일시</b>: {now_str} | <b>분석 종목</b>: 총 {total_count:,}개 | <b>A+등급</b>: {len(a_plus_list)}개 / <b>A등급</b>: {len(a_list)}개"
     story.append(Paragraph(meta_text, meta_style))
 
-    # Section 1: Summary Table
-    story.append(Paragraph('1. 📈 등급 분포 및 수급 현황 요약', section_style))
-    summary_data = [
-        [Paragraph('투자등급', th_style), Paragraph('종목 수', th_style), Paragraph('비율 (%)', th_style), Paragraph('주요 조건 기준', th_style)],
-        [Paragraph('🔥 A+', td_bold), Paragraph(f'{len(a_plus_list):,}개', td_style), Paragraph(f'{len(a_plus_list)/total_count*100:.1f}%', td_style), Paragraph('쌍끌이(O) + 20일선위(O) + 정배열(O)', td_left)],
-        [Paragraph('⭐ A', td_bold), Paragraph(f'{len(a_list):,}개', td_style), Paragraph(f'{len(a_list)/total_count*100:.1f}%', td_style), Paragraph('쌍끌이(O) + 20일선위(O)', td_left)],
-        [Paragraph('🟡 B', td_style), Paragraph(f'{len(b_list):,}개', td_style), Paragraph(f'{len(b_list)/total_count*100:.1f}%', td_style), Paragraph('쌍끌이(O) 또는 20일선위(O) 중 1개 만족', td_left)],
-        [Paragraph('⚪ C', td_style), Paragraph(f'{len(c_list):,}개', td_style), Paragraph(f'{len(c_list)/total_count*100:.1f}%', td_style), Paragraph('조건 미달', td_left)],
+    # 12개 전체 주요 섹터/테마별 모멘텀 순위 2열 배너 추가
+    from collections import Counter
+    sec_counter_pdf = Counter(r.get('섹터', '일반 주도주') for r in rows)
+    sec_aplus_pdf = Counter(r.get('섹터', '일반 주도주') for r in a_plus_list)
+    sec_a_pdf = Counter(r.get('섹터', '일반 주도주') for r in a_list)
+    sorted_sec_pdf = sorted(
+        sec_counter_pdf.keys(),
+        key=lambda s: ((sec_aplus_pdf.get(s, 0) * 3.0) + (sec_a_pdf.get(s, 0) * 1.0), sec_aplus_pdf.get(s, 0), sec_a_pdf.get(s, 0)),
+        reverse=True
+    )
+    
+    sec_banner_data = [
+        [Paragraph('🔥 <b>[주요 섹터/테마별 주도주 분포 현황 (모멘텀 순위)]</b>', ParagraphStyle('SecBannerTitle', parent=styles['Normal'], fontName='AppleGothic', fontSize=8.5, leading=11, textColor=colors.HexColor('#1e3a8a'))), '']
     ]
-    t_sum = Table(summary_data, colWidths=[65, 65, 65, 335])
-    t_sum.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')),
+    half = (len(sorted_sec_pdf) + 1) // 2
+    col1 = sorted_sec_pdf[:half]
+    col2 = sorted_sec_pdf[half:]
+    
+    for i in range(half):
+        s1 = col1[i]
+        s1_rank = "🥇 1위" if i == 0 else ("🥈 2위" if i == 1 else ("🥉 3위" if i == 2 else f"{i+1}위"))
+        s1_text = f"• <b>{s1_rank}</b>: {s1} (A+ {sec_aplus_pdf.get(s1,0)}개 / A {sec_a_pdf.get(s1,0)}개)"
+        
+        if i < len(col2):
+            s2 = col2[i]
+            idx2 = half + i
+            s2_rank = f"{idx2+1}위"
+            s2_text = f"• <b>{s2_rank}</b>: {s2} (A+ {sec_aplus_pdf.get(s2,0)}개 / A {sec_a_pdf.get(s2,0)}개)"
+        else:
+            s2_text = ""
+            
+        sec_banner_data.append([
+            Paragraph(s1_text, ParagraphStyle('SecB1', parent=styles['Normal'], fontName='AppleGothic', fontSize=7.5, leading=10, textColor=colors.HexColor('#1e293b'))),
+            Paragraph(s2_text, ParagraphStyle('SecB2', parent=styles['Normal'], fontName='AppleGothic', fontSize=7.5, leading=10, textColor=colors.HexColor('#1e293b')))
+        ])
+        
+    t_sec_banner = Table(sec_banner_data, colWidths=[270, 275])
+    t_sec_banner.setStyle(TableStyle([
+        ('SPAN', (0,0), (1,0)),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 1),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 1),
+        ('LEFTPADDING', (0,0), (-1,-1), 0),
+        ('RIGHTPADDING', (0,0), (-1,-1), 0),
     ]))
-    story.append(t_sum)
-    story.append(Spacer(1, 8))
+    story.append(t_sec_banner)
+    story.append(Spacer(1, 6))
 
-    # Section 2: A+ Grade Table
-    story.append(Paragraph(f'2. 🏆 A+ 등급 핵심 주도주 심층 분석 ({len(a_plus_list)}종목)', section_style))
+    th_sm = ParagraphStyle('PdfTHSm', parent=styles['Normal'], fontName='AppleGothic', fontSize=6.0, leading=7.5, textColor=colors.white, alignment=1)
+    td_sm = ParagraphStyle('PdfTDSm', parent=styles['Normal'], fontName='AppleGothic', fontSize=6.0, leading=7.5, textColor=colors.HexColor('#1e293b'), alignment=1)
+    td_bold_sm = ParagraphStyle('PdfTDBoldSm', parent=styles['Normal'], fontName='AppleGothic', fontSize=6.0, leading=7.5, textColor=colors.HexColor('#0f172a'), alignment=1)
+    td_left_sm = ParagraphStyle('PdfTDLeftSm', parent=styles['Normal'], fontName='AppleGothic', fontSize=6.0, leading=7.5, textColor=colors.HexColor('#1e293b'), alignment=0)
+    td_red_sm = ParagraphStyle('PdfTDRedSm', parent=styles['Normal'], fontName='AppleGothic', fontSize=6.0, leading=7.5, textColor=colors.HexColor('#dc2626'), alignment=1)
+    td_blue_sm = ParagraphStyle('PdfTDBlueSm', parent=styles['Normal'], fontName='AppleGothic', fontSize=6.0, leading=7.5, textColor=colors.HexColor('#2563eb'), alignment=1)
+
+    # =========================================================================
+    # 📌 [표 1] 🔥 A+ 등급 핵심 주도주 (정배열 대세상승)
+    # =========================================================================
+    story.append(Paragraph(f'🔥 A+ 등급 핵심 주도주 (정배열 대세상승) - {len(a_plus_list)}종목', section_style))
+    story.append(Paragraph('쌍끌이 수급 + 20일선 위 + 5/20/60/120일선 완전 정배열 검증 종목', section_desc))
+    
     if a_plus_list:
-        aplus_table_data = [
-            [Paragraph('코드', th_style), Paragraph('종목명', th_style), Paragraph('섹터', th_style), Paragraph('현재가', th_style), Paragraph('외인연속', th_style), Paragraph('기관연속', th_style), Paragraph('외인보유율', th_style)]
+        t1_data = [
+            [
+                Paragraph('코드', th_sm), Paragraph('종목명', th_sm), Paragraph('대표 섹터', th_sm),
+                Paragraph('20일이격도', th_sm), Paragraph('과열여부', th_sm), Paragraph('추세단계', th_sm),
+                Paragraph('권장진입가', th_sm), Paragraph('현재가', th_sm), Paragraph('등락률', th_sm),
+                Paragraph('쌍끌이', th_sm), Paragraph('외인연속', th_sm), Paragraph('기관연속', th_sm),
+                Paragraph('20일선위', th_sm), Paragraph('정배열', th_sm)
+            ]
         ]
         for r in a_plus_list:
-            aplus_table_data.append([
-                Paragraph(r.get('종목코드',''), td_style),
-                Paragraph(r.get('종목명',''), td_bold),
-                Paragraph(r.get('섹터','일반 주도주'), td_left),
-                Paragraph(f"{r.get('현재가','')}원", td_style),
-                Paragraph(f"{r.get('외국인연속매수(일)','')}일", td_style),
-                Paragraph(f"{r.get('기관연속매수(일)','')}일", td_style),
-                Paragraph(r.get('외국인보유율',''), td_style)
+            chg_val = r.get('등락률', '')
+            c_style = td_red_sm if '+' in chg_val else (td_blue_sm if '-' in chg_val else td_sm)
+            t1_data.append([
+                Paragraph(r.get('종목코드',''), td_sm),
+                Paragraph(r.get('종목명',''), td_bold_sm),
+                Paragraph(r.get('섹터','일반 주도주'), td_left_sm),
+                Paragraph(r.get('20일이격도','100.0%'), td_sm),
+                Paragraph(r.get('과열여부','적정(안전)'), td_sm),
+                Paragraph(r.get('추세단계','정배열가속(A+)'), td_sm),
+                Paragraph(r.get('추천매수가',''), td_sm),
+                Paragraph(f"{r.get('현재가','')}원", td_sm),
+                Paragraph(chg_val, c_style),
+                Paragraph(r.get('쌍끌이여부',''), td_sm),
+                Paragraph(f"{r.get('외국인연속매수(일)','')}일", td_sm),
+                Paragraph(f"{r.get('기관연속매수(일)','')}일", td_sm),
+                Paragraph(r.get('20일선위','O'), td_sm),
+                Paragraph(r.get('정배열여부','O'), td_sm)
             ])
-        t_ap = Table(aplus_table_data, colWidths=[50, 100, 120, 80, 60, 60, 60])
-        t_ap.setStyle(TableStyle([
+        t1 = Table(t1_data, colWidths=[36, 62, 62, 38, 42, 48, 60, 44, 36, 25, 24, 24, 22, 22])
+        t1.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e3a8a')),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
             ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f1f5f9')]),
-            ('TOPPADDING', (0,0), (-1,-1), 4),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+            ('TOPPADDING', (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
         ]))
-        story.append(t_ap)
+        story.append(t1)
     else:
-        story.append(Paragraph('현재 A+ 등급 조건 종목이 없습니다.', normal_style))
-    story.append(Spacer(1, 8))
+        story.append(Paragraph('ℹ️ 오늘 A+ 등급 조건(쌍끌이+20일선위+정배열)을 완벽히 충족하는 종목이 없습니다.', normal_style))
+    
+    story.append(Spacer(1, 10))
 
-    # Section 3: A Grade Table (Top 15)
-    story.append(Paragraph(f'3. ⭐ A 등급 주요 관찰 종목 (상위 15개 요약)', section_style))
-    top_a = a_list[:15]
-    if top_a:
-        a_table_data = [
-            [Paragraph('코드', th_style), Paragraph('종목명', th_style), Paragraph('섹터', th_style), Paragraph('현재가', th_style), Paragraph('쌍끌이', th_style), Paragraph('20일선위', th_style), Paragraph('외인연속', th_style), Paragraph('기관연속', th_style)]
+    # =========================================================================
+    # 📌 [표 2] 🚀 신규 승격 & A+ 등급 상향 종목
+    # =========================================================================
+    story.append(Paragraph(f'🚀 신규 승격 & A+ 등급 상향 종목 - {len(upgraded_list)}종목', section_style))
+    story.append(Paragraph('이전 거래일 대비 수급/차트 조건 개선으로 A+ 등급으로 승격되었거나 신규 포착된 최상위 주도주', section_desc))
+    
+    if upgraded_list:
+        t2_data = [
+            [Paragraph('코드', th_style), Paragraph('종목명', th_style), Paragraph('대표 섹터', th_style), Paragraph('등급변동', th_style), Paragraph('변동이유', th_style), Paragraph('현재가', th_style), Paragraph('등락률', th_style), Paragraph('쌍끌이', th_style), Paragraph('20일선위', th_style)]
         ]
-        for r in top_a:
-            a_table_data.append([
+        for r in upgraded_list:
+            chg_val = r.get('등락률', '')
+            c_style = td_red if '+' in chg_val else (td_blue if '-' in chg_val else td_style)
+            t2_data.append([
                 Paragraph(r.get('종목코드',''), td_style),
                 Paragraph(r.get('종목명',''), td_bold),
                 Paragraph(r.get('섹터','일반 주도주'), td_left),
+                Paragraph(r.get('등급변동',''), td_bold),
+                Paragraph(r.get('변동이유',''), td_left),
                 Paragraph(f"{r.get('현재가','')}원", td_style),
+                Paragraph(chg_val, c_style),
                 Paragraph(r.get('쌍끌이여부',''), td_style),
-                Paragraph(r.get('20일선위',''), td_style),
-                Paragraph(f"{r.get('외국인연속매수(일)','')}일", td_style),
-                Paragraph(f"{r.get('기관연속매수(일)','')}일", td_style)
+                Paragraph(r.get('20일선위',''), td_style)
             ])
-        t_a = Table(a_table_data, colWidths=[50, 100, 120, 80, 45, 45, 45, 45])
-        t_a.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#334155')),
+        t2 = Table(t2_data, colWidths=[45, 80, 85, 75, 95, 55, 45, 33, 32])
+        t2.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#0369a1')),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
-            ('TOPPADDING', (0,0), (-1,-1), 3.5),
-            ('BOTTOMPADDING', (0,0), (-1,-1), 3.5),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f0f9ff')]),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
         ]))
-        story.append(t_a)
+        story.append(t2)
     else:
-        story.append(Paragraph('A 등급 종목이 없습니다.', normal_style))
+        story.append(Paragraph('ℹ️ 오늘 신규 승격 또는 A+ 등급으로 상향된 종목이 없습니다.', normal_style))
+
+    story.append(Spacer(1, 10))
+
+    # =========================================================================
+    # 📌 [표 3] 🔻 A+ 등급 하향 & 리스크 관리 주의 종목
+    # =========================================================================
+    story.append(Paragraph(f'🔻 A+ 등급 하향 & 리스크 관리 주의 종목 - {len(downgraded_list)}종목', section_style))
+    story.append(Paragraph('이전 거래일 대비 수급 약화 또는 정배열 이탈로 등급이 하향 조정된 주의 필요 종목', section_desc))
+    
+    if downgraded_list:
+        t3_data = [
+            [Paragraph('코드', th_style), Paragraph('종목명', th_style), Paragraph('대표 섹터', th_style), Paragraph('등급변동', th_style), Paragraph('변동이유', th_style), Paragraph('현재가', th_style), Paragraph('등락률', th_style), Paragraph('쌍끌이', th_style), Paragraph('20일선위', th_style)]
+        ]
+        for r in downgraded_list:
+            chg_val = r.get('등락률', '')
+            c_style = td_red if '+' in chg_val else (td_blue if '-' in chg_val else td_style)
+            t3_data.append([
+                Paragraph(r.get('종목코드',''), td_style),
+                Paragraph(r.get('종목명',''), td_bold),
+                Paragraph(r.get('섹터','일반 주도주'), td_left),
+                Paragraph(r.get('등급변동',''), td_bold),
+                Paragraph(r.get('변동이유',''), td_left),
+                Paragraph(f"{r.get('현재가','')}원", td_style),
+                Paragraph(chg_val, c_style),
+                Paragraph(r.get('쌍끌이여부',''), td_style),
+                Paragraph(r.get('20일선위',''), td_style)
+            ])
+        t3 = Table(t3_data, colWidths=[45, 85, 95, 75, 90, 60, 50, 45, 45])
+        t3.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#991b1b')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#fef2f2')]),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ]))
+        story.append(t3)
+    else:
+        story.append(Paragraph('ℹ️ 오늘 등급이 하향 조정된 리스크 주의 종목이 없습니다. (수급 유지중)', normal_style))
+
+    story.append(Spacer(1, 14))
+    story.append(HRFlowable(width='100%', thickness=1, color=colors.HexColor('#cbd5e1'), spaceAfter=10))
+
+    # =========================================================================
+    # 📌 [설명 섹션] 등급분포 및 수급현황 + 20일 이격도 설명
+    # =========================================================================
+    story.append(Paragraph('📘 주도주 수급 분석 및 추세 판단 가이드 (설명)', section_style))
+    
+    # 1) 등급분포 및 수급현황
+    story.append(Paragraph('1. 등급 분포 및 수급 현황 산출 기준', ParagraphStyle('SubSec', parent=styles['Heading3'], fontName='AppleGothic', fontSize=9.5, leading=13, textColor=colors.HexColor('#0f172a'), spaceBefore=4, spaceAfter=3)))
+    
+    g_data = [
+        [Paragraph('투자등급', th_style), Paragraph('종목 수', th_style), Paragraph('비율 (%)', th_style), Paragraph('주요 수급 및 차트 정배열 조건 기준', th_style)],
+        [Paragraph('🔥 A+', td_bold), Paragraph(f'{len(a_plus_list):,}개', td_style), Paragraph(f'{len(a_plus_list)/total_count*100:.1f}%', td_style), Paragraph('쌍끌이(O) + 20일선위(O) + 5/20/60/120일선 완벽 정배열(O)', td_left)],
+        [Paragraph('⭐ A', td_bold), Paragraph(f'{len(a_list):,}개', td_style), Paragraph(f'{len(a_list)/total_count*100:.1f}%', td_style), Paragraph('쌍끌이(O) + 20일선위(O) (정배열 진행 중 수급주)', td_left)],
+        [Paragraph('🟡 B', td_style), Paragraph(f'{len(b_list):,}개', td_style), Paragraph(f'{len(b_list)/total_count*100:.1f}%', td_style), Paragraph('쌍끌이(O) 또는 20일선위(O) 중 1가지 만족 (관심주)', td_left)],
+        [Paragraph('⚪ C', td_style), Paragraph(f'{len(c_list):,}개', td_style), Paragraph(f'{len(c_list)/total_count*100:.1f}%', td_style), Paragraph('조건 미달 (20일선 이하 및 수급 미흡 종목)', td_left)],
+    ]
+    t_g = Table(g_data, colWidths=[60, 60, 60, 365])
+    t_g.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+    ]))
+    story.append(t_g)
     story.append(Spacer(1, 8))
 
-    # Section 4: Strategy
-    story.append(Paragraph('4. 🎯 AI 추세추종 매매 실전 전략 가이드', section_style))
+    # 2) 20일 이격도 설명
+    story.append(Paragraph('2. 20일 이격도 & 과열 판정 가이드', ParagraphStyle('SubSec2', parent=styles['Heading3'], fontName='AppleGothic', fontSize=9.5, leading=13, textColor=colors.HexColor('#0f172a'), spaceBefore=4, spaceAfter=3)))
+    
+    disparity_text = """
+    • <b>🟢 적정 (97% ~ 108%)</b>: 20일 이동평균선 부근 안심 1차 진입 적기 (추세추종 매수 권장 구간)<br/>
+    • <b>🟡 상승과열 (108% ~ 115%)</b>: 단기 상승 폭 확대 구간. 신규 추격 매수 자제 및 본전 스탑로스 설정<br/>
+    • <b>🔴 단기과열 (115% 이상)</b>: 🚨 <b>추가 매수 및 불타기 절대 금지!</b> (단기 차익실현 및 이익 확보 권장)<br/>
+    • <b>🔵 이격과도 (&lt; 97%)</b>: 20일 이동평균선 이탈 구간 (관망 및 비중 축소 대응)
+    """
+    story.append(Paragraph(disparity_text, normal_style))
+    story.append(Spacer(1, 8))
+
+    # 3) 실전 매매 수칙
+    story.append(Paragraph('3. AI 추세추종 매매 실전 전략 수칙', ParagraphStyle('SubSec3', parent=styles['Heading3'], fontName='AppleGothic', fontSize=9.5, leading=13, textColor=colors.HexColor('#0f172a'), spaceBefore=4, spaceAfter=3)))
     strat_text = """
-    • <b>피라미딩 분할 매수</b>: 1차(40%) 20일선 지지반등 → 2차(30%) +3%~+5% 수익 시 추매 → 3차(20%) 전고점 돌파 → 4차(10%) 불타기<br/>
-    • <b>리스크 관리 규칙</b>: -3% 손절선 기계적 적용 | B/C 등급 하향 또는 20일선 이탈 시 수급 악화 판단 후 정리
+    • <b>피라미딩(Pyramiding) 분할 매수</b>: 1차(40%) 20일선 반등 → 2차(30%) +3%~+5% 수익 시 추매 → 3차(20%) 전고점 돌파 → 4차(10%) 불타기<br/>
+    • <b>리스크 관리 & 손절 원칙</b>: 매수가 대비 <b>-3% 손절선 기계적 적용</b> | B/C 등급 하향 또는 20일선 이탈 시 수급 악화 판단 후 정량 대응
     """
     story.append(Paragraph(strat_text, normal_style))
 
