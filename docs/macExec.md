@@ -13,13 +13,25 @@
 python3 main.py --step 4,5
 ```
 
-### 1.2 옵션 지정 실행 (깃 푸시 및 텔레그램 알림 활성화)
+### 1.2 통합 실행 (수급분석 + 깃 푸시 + 텔레그램 알림)
 ```bash
 python3 main.py --step 4,5 --push-git --telegram
 ```
 
-- **`--push-git`**: 분석 완료 후 `git add reports/`, `git commit -m "auto: 4 PM report update (YYYYMMDD)"`, `git push` 자동 수행.
-- **`--telegram`**: 분석 완료 후 **`A+ 등급` 핵심 주도주 종목명 및 코드만 요약**하여 텔레그램 메시지 자동 발송.
+### 1.3 텔레그램 알림 단독 실행 (분석 과정 생략, 기존 리포트 전송)
+```bash
+python3 main.py --telegram-only
+```
+
+### 1.4 Git 푸시 단독 실행 (분석 과정 생략, 기존 파일 커밋 및 푸시)
+```bash
+python3 main.py --push-git-only
+```
+
+- **`--push-git`**: 분석 완료 후 `git add`, `git commit -m "주식분석_자동화_YYYYMMDD"`, `git push` 자동 수행.
+- **`--push-git-only`**: 1~5단계 데이터 수집을 생략하고 Git 커밋(`주식분석_자동화_YYYYMMDD`) 및 푸시만 단독 실행.
+- **`--telegram`**: 분석 완료 후 **`A+ 등급` 주도주 종목명 및 주요 섹터(`종목명 - 섹터`)만 요약**하여 텔레그램 메시지 발송.
+- **`--telegram-only`**: 1~5단계 데이터 수집을 생략하고 기존 최신 리포트로 텔레그램 알림만 단독 발송.
 
 ---
 
@@ -30,8 +42,8 @@ python3 main.py --step 4,5 --push-git --telegram
 ### 2.1 `.env` 파일 설정 방법 (추천)
 프로젝트 루트 폴더(`/Users/hyunjongkim/Documents/100_prd/stockNaverEtf/.env`)에 아래 두 줄을 작성합니다:
 ```env
-TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN_HERE"
-TELEGRAM_CHAT_ID="YOUR_TELEGRAM_CHAT_ID_HERE"
+TELEGRAM_BOT_TOKEN="발급받으신_텔레그램_봇_토큰"
+TELEGRAM_CHAT_ID="발급받으신_대화방_또는_채널_ID"
 ```
 
 ### 2.2 CLI 직접 전달 방법
