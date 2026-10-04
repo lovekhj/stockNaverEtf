@@ -211,19 +211,13 @@ def send_telegram_notification(bot_token, chat_id, target_date=None):
         print(f"⚠️ [텔레그램 오류] {msg}")
         return False, msg
 
-    lines = [f"🚀 <b>[ETF 주도주 수급 분석 알림 - {date_str}]</b>", ""]
+    lines = [f"🚀 <b>[A+ 주도주 알림 - {date_str}]</b>", ""]
     if aplus_stocks:
-        lines.append(f"🔥 <b>오늘 포착된 A+ 등급 핵심 주도주 ({len(aplus_stocks)}개):</b>")
         for code, name, sector, price in aplus_stocks:
-            sec_info = f" ({sector})" if sector else ""
-            prc_info = f" - {price}원" if price else ""
-            lines.append(f"• <b>{name}</b> <code>[{code}]</code>{sec_info}{prc_info}")
+            sec_info = sector if sector else "기타"
+            lines.append(f"• <b>{name}</b> - {sec_info}")
     else:
-        lines.append("ℹ️ 오늘 포착된 A+ 등급 종목이 없습니다. (관망 권장)")
-        
-    if a_stocks:
-        lines.append("")
-        lines.append(f"⭐ 참고: A 등급 우량주 {len(a_stocks)}개 포착")
+        lines.append("ℹ️ 오늘 포착된 A+ 등급 종목이 없습니다.")
 
     message_text = "\n".join(lines)
     
