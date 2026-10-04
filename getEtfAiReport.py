@@ -276,7 +276,224 @@ def generate_ai_report(csv_path):
         f.write(report_content)
 
     print(f"💾 [성공] AI 추세추종 분석 마크다운 리포트가 생성되었습니다: {md_path}")
+    
+    # PDF 리포트도 함께 생성
+    generate_pdf_report(csv_path)
     return True
+
+def generate_pdf_report(csv_path):
+    """
+    CSV 분석 데이터를 바탕으로 가독성 우수한 PDF 리포트(`reports/report_YYYYMMDD.pdf`)를 생성합니다.
+    """
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+    except ImportError:
+        print("⚠️ ReportLab 라이브러리가 존재하지 않아 PDF 생성은 건너땁니다.")
+        return False
+
+    font_path = "/System/Library/Fonts/Supplemental/AppleGothic.ttf"
+    if not os.path.exists(font_path):
+        font_path = "/Library/Fonts/Arial Unicode.ttf"
+    if not os.path.exists(font_path):
+        font_path = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
+
+    try:
+        pdfmetrics.registerFont(TTFont('AppleGothic', font_path))
+    except Exception as e:
+        print(f"⚠️ PDF 폰트 등록 실패 ({e})")
+        return False
+
+    base_name = os.path.basename(csv_path)
+    date_part = base_name.replace("report_", "").replace(".csv", "")
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    pdf_dir = os.path.join(project_root, "pdf")
+    os.makedirs(pdf_dir, exist_ok=True)
+    pdf_path = os.path.join(pdf_dir, f"report_{date_part}.pdf")
+
+    rows = []
+    try:
+        with open(csv_path, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rows.append(row)
+    except Exception as e:
+        print(f"❌ PDF 생성 중 CSV 읽기 실패: {e}")
+        return False
+
+    total_count = len(rows)
+    if total_count == 0:
+        return False
+
+    a_plus_list = [r for r in rows if r.get('투자등급') == 'A+']
+    a_list = [r for r in rows if r.get('투자등급') == 'A']
+    b_list = [r for r in rows if r.get('투자등급') == 'B']
+    c_list = [r for r in rows if r.get('투자등급') == 'C']
+
+    doc = SimpleDocTemplate(
+        pdf_path,
+        pagesize=A4,
+        rightMargin=30,
+        leftMargin=30,
+        topMargin=30,
+        bottomMargin=30
+    )
+
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'PdfTitle', parent=styles['Heading1'],
+        fontName='AppleGothic', fontSize=15, leading=19,
+        textColor=colors.HexColor('#0f172a'), spaceAfter=6
+    )
+    meta_style = ParagraphStyle(
+        'PdfMeta', parent=styles['Normal'],
+        fontName='AppleGothic', fontSize=8.5, leading=12,
+        textColor=colors.HexColor('#475569'), spaceAfter=10
+    )
+    section_style = ParagraphStyle(
+        'PdfSection', parent=styles['Heading2'],
+        fontName='AppleGothic', fontSize=11, leading=15,
+        textColor=colors.HexColor('#1e293b'), spaceBefore=10, spaceAfter=5
+    )
+    normal_style = ParagraphStyle(
+        'PdfNormal', parent=styles['Normal'],
+        fontName='AppleGothic', fontSize=8, leading=12,
+        textColor=colors.HexColor('#334155')
+    )
+    th_style = ParagraphStyle(
+        'PdfTH', parent=styles['Normal'],
+        fontName='AppleGothic', fontSize=8, leading=10,
+        textColor=colors.white, alignment=1
+    )
+    td_style = ParagraphStyle(
+        'PdfTD', parent=styles['Normal'],
+        fontName='AppleGothic', fontSize=7.5, leading=10,
+        textColor=colors.HexColor('#1e293b'), alignment=1
+    )
+    td_bold = ParagraphStyle(
+        'PdfTDBold', parent=styles['Normal'],
+        fontName='AppleGothic', fontSize=7.5, leading=10,
+        textColor=colors.HexColor('#0f172a'), alignment=1
+    )
+    td_left = ParagraphStyle(
+        'PdfTDLeft', parent=styles['Normal'],
+        fontName='AppleGothic', fontSize=7.5, leading=10,
+        textColor=colors.HexColor('#1e293b'), alignment=0
+    )
+
+    story = []
+    
+    # Title & Header
+    story.append(Paragraph('📊 ETF 주도주 수급 & 추세추종 AI 종합 분석 리포트', title_style))
+    story.append(HRFlowable(width='100%', thickness=1.5, color=colors.HexColor('#2563eb'), spaceAfter=8))
+    
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    meta_text = f"<b>분석 일자</b>: {date_part[:4]}-{date_part[4:6]}-{date_part[6:8]} | <b>생성 일시</b>: {now_str} | <b>분석 종목</b>: 총 {total_count:,}개 주도주"
+    story.append(Paragraph(meta_text, meta_style))
+
+    # Section 1: Summary Table
+    story.append(Paragraph('1. 📈 등급 분포 및 수급 현황 요약', section_style))
+    summary_data = [
+        [Paragraph('투자등급', th_style), Paragraph('종목 수', th_style), Paragraph('비율 (%)', th_style), Paragraph('주요 조건 기준', th_style)],
+        [Paragraph('🔥 A+', td_bold), Paragraph(f'{len(a_plus_list):,}개', td_style), Paragraph(f'{len(a_plus_list)/total_count*100:.1f}%', td_style), Paragraph('쌍끌이(O) + 20일선위(O) + 정배열(O)', td_left)],
+        [Paragraph('⭐ A', td_bold), Paragraph(f'{len(a_list):,}개', td_style), Paragraph(f'{len(a_list)/total_count*100:.1f}%', td_style), Paragraph('쌍끌이(O) + 20일선위(O)', td_left)],
+        [Paragraph('🟡 B', td_style), Paragraph(f'{len(b_list):,}개', td_style), Paragraph(f'{len(b_list)/total_count*100:.1f}%', td_style), Paragraph('쌍끌이(O) 또는 20일선위(O) 중 1개 만족', td_left)],
+        [Paragraph('⚪ C', td_style), Paragraph(f'{len(c_list):,}개', td_style), Paragraph(f'{len(c_list)/total_count*100:.1f}%', td_style), Paragraph('조건 미달', td_left)],
+    ]
+    t_sum = Table(summary_data, colWidths=[65, 65, 65, 335])
+    t_sum.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+    ]))
+    story.append(t_sum)
+    story.append(Spacer(1, 8))
+
+    # Section 2: A+ Grade Table
+    story.append(Paragraph(f'2. 🏆 A+ 등급 핵심 주도주 심층 분석 ({len(a_plus_list)}종목)', section_style))
+    if a_plus_list:
+        aplus_table_data = [
+            [Paragraph('코드', th_style), Paragraph('종목명', th_style), Paragraph('섹터', th_style), Paragraph('현재가', th_style), Paragraph('외인연속', th_style), Paragraph('기관연속', th_style), Paragraph('외인보유율', th_style)]
+        ]
+        for r in a_plus_list:
+            aplus_table_data.append([
+                Paragraph(r.get('종목코드',''), td_style),
+                Paragraph(r.get('종목명',''), td_bold),
+                Paragraph(r.get('섹터','일반 주도주'), td_left),
+                Paragraph(f"{r.get('현재가','')}원", td_style),
+                Paragraph(f"{r.get('외국인연속매수(일)','')}일", td_style),
+                Paragraph(f"{r.get('기관연속매수(일)','')}일", td_style),
+                Paragraph(r.get('외국인보유율',''), td_style)
+            ])
+        t_ap = Table(aplus_table_data, colWidths=[50, 100, 120, 80, 60, 60, 60])
+        t_ap.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e3a8a')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f1f5f9')]),
+            ('TOPPADDING', (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ]))
+        story.append(t_ap)
+    else:
+        story.append(Paragraph('현재 A+ 등급 조건 종목이 없습니다.', normal_style))
+    story.append(Spacer(1, 8))
+
+    # Section 3: A Grade Table (Top 15)
+    story.append(Paragraph(f'3. ⭐ A 등급 주요 관찰 종목 (상위 15개 요약)', section_style))
+    top_a = a_list[:15]
+    if top_a:
+        a_table_data = [
+            [Paragraph('코드', th_style), Paragraph('종목명', th_style), Paragraph('섹터', th_style), Paragraph('현재가', th_style), Paragraph('쌍끌이', th_style), Paragraph('20일선위', th_style), Paragraph('외인연속', th_style), Paragraph('기관연속', th_style)]
+        ]
+        for r in top_a:
+            a_table_data.append([
+                Paragraph(r.get('종목코드',''), td_style),
+                Paragraph(r.get('종목명',''), td_bold),
+                Paragraph(r.get('섹터','일반 주도주'), td_left),
+                Paragraph(f"{r.get('현재가','')}원", td_style),
+                Paragraph(r.get('쌍끌이여부',''), td_style),
+                Paragraph(r.get('20일선위',''), td_style),
+                Paragraph(f"{r.get('외국인연속매수(일)','')}일", td_style),
+                Paragraph(f"{r.get('기관연속매수(일)','')}일", td_style)
+            ])
+        t_a = Table(a_table_data, colWidths=[50, 100, 120, 80, 45, 45, 45, 45])
+        t_a.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#334155')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
+            ('TOPPADDING', (0,0), (-1,-1), 3.5),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3.5),
+        ]))
+        story.append(t_a)
+    else:
+        story.append(Paragraph('A 등급 종목이 없습니다.', normal_style))
+    story.append(Spacer(1, 8))
+
+    # Section 4: Strategy
+    story.append(Paragraph('4. 🎯 AI 추세추종 매매 실전 전략 가이드', section_style))
+    strat_text = """
+    • <b>피라미딩 분할 매수</b>: 1차(40%) 20일선 지지반등 → 2차(30%) +3%~+5% 수익 시 추매 → 3차(20%) 전고점 돌파 → 4차(10%) 불타기<br/>
+    • <b>리스크 관리 규칙</b>: -3% 손절선 기계적 적용 | B/C 등급 하향 또는 20일선 이탈 시 수급 악화 판단 후 정리
+    """
+    story.append(Paragraph(strat_text, normal_style))
+
+    try:
+        doc.build(story)
+        print(f"💾 [성공] AI 추세추종 분석 PDF 리포트가 생성되었습니다: {pdf_path}")
+        return True
+    except Exception as e:
+        print(f"❌ PDF 생성 실패: {e}")
+        return False
 
 def main():
     """
@@ -284,6 +501,7 @@ def main():
     """
     parser = argparse.ArgumentParser(description="[5단계] ETF 주도주 AI 추세추종 분석 마크다운 리포트 생성기")
     parser.add_argument("--date", type=str, help="분석 대상 날짜 (YYYYMMDD 형식, 예: 20261003)")
+    parser.add_argument("--pdf", action="store_true", help="PDF 리포트도 함께 생성합니다.")
     args = parser.parse_args()
 
     # 대상 CSV 파일 찾기

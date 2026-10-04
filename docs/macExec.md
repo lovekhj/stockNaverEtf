@@ -28,6 +28,12 @@ python3 main.py --telegram-only
 python3 main.py --push-git-only
 ```
 
+### 1.5 PDF 리포트 추가 생성 옵션
+```bash
+python3 main.py --step 4,5 --pdf
+```
+
+- **`--pdf`**: 5단계 리포트 생성 시 마크다운 리포트(`reports/report_YYYYMMDD.md`)뿐만 아니라 깔끔하게 레이아웃된 PDF 보고서(`reports/pdf/report_YYYYMMDD.pdf`)를 `reports/pdf/` 폴더에 추가로 자동 생성합니다.
 - **`--push-git`**: 분석 완료 후 `git add`, `git commit -m "주식분석_자동화_YYYYMMDD"`, `git push` 자동 수행.
 - **`--push-git-only`**: 1~5단계 데이터 수집을 생략하고 Git 커밋(`주식분석_자동화_YYYYMMDD`) 및 푸시만 단독 실행.
 - **`--telegram`**: 분석 완료 후 **`A+ 등급` 주도주 종목명 및 주요 섹터(`종목명 - 섹터`)만 요약**하여 텔레그램 메시지 발송.
@@ -61,15 +67,25 @@ python3 main.py --step 4,5 --telegram --bot-token "YOUR_TOKEN" --chat-id "YOUR_C
 sudo pmset repeat wakeorpoweron MTWRF 15:58:00
 ```
 
-### 2단계: 매일 오후 16:00시 파이프라인 + 깃 푸시 + 텔레그램 알림 (`crontab`)
+### 2단계: 매일 오후 16:00 ~ 16:05시 파이프라인 + 깃 푸시 + 텔레그램 알림 (`crontab`)
+> 💡 **Tip:** 네이버 금융의 외인/기관 최종 수급 집계가 15:45~16:00 사이에 마감되므로, 수급 데이터 반영의 100% 안정성을 원하시는 경우 **16:05분 실행(`5 16 * * 1-5`)**을 권장합니다.
+
 1. 터미널에서 크론탭 편집기를 엽니다:
    ```bash
    crontab -e
    ```
-2. 아래 구문을 등록하고 저장(`:wq`)합니다:
+2. 아래 구문 중 하나를 등록하고 저장(`:wq`)합니다:
+
+   **[추천] 16:05분 완벽 수급 반영 실행:**
+   ```bash
+   5 16 * * 1-5 cd /Users/hyunjongkim/Documents/100_prd/stockNaverEtf && /usr/bin/python3 main.py --step 4,5 --push-git --telegram >> reports/log_$(date +\%Y\%m\%d).txt 2>&1
+   ```
+
+   **[기본] 16:00분 정액 실행:**
    ```bash
    0 16 * * 1-5 cd /Users/hyunjongkim/Documents/100_prd/stockNaverEtf && /usr/bin/python3 main.py --step 4,5 --push-git --telegram >> reports/log_$(date +\%Y\%m\%d).txt 2>&1
    ```
+
 3. 등록 확인:
    ```bash
    crontab -l

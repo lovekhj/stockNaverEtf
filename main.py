@@ -14,12 +14,13 @@
    - [2단계] `getEtfDtlList.py`   : ETF별 상위 1~5위 주요 구성종목 수집 -> data/etf_dtl_list.csv
    - [3단계] `getEtfTopStockList.py`: 순수 국내주식 320개 정제 및 6자리 종목코드 매핑 -> data/etf_top_stocks.csv
    - [4단계] `getEtfInvestorFlow.py`: 외인/기관 수급 & 이동평균선(MA) 통합 분석 -> reports/report_YYYYMMDD.csv
-   - [5단계] `getEtfAiReport.py`  : AI 추세추종 종합 분석 마크다운 리포트 자동 생성 -> reports/report_YYYYMMDD.md
+   - [5단계] `getEtfAiReport.py`  : AI 추세추종 종합 분석 마크다운/PDF 리포트 자동 생성 -> reports/report_YYYYMMDD.md & reports/pdf/report_YYYYMMDD.pdf
 
 3. 주요 실행 방법 및 옵션 조합:
    - 대화형 메뉴 (추천) : `python3 main.py` (엔터 치면 기본 4+5단계 실행)
    - 전체 파이프라인    : `python3 main.py --all` (1단계부터 5단계까지 순차 실행)
    - 특정 단계 지정     : `python3 main.py --step 4,5`
+   - PDF 리포트 생성   : `python3 main.py --step 5 --pdf` (MD 및 PDF 리포트 동시 생성)
    - 텔레그램 분석+알림: `python3 main.py --step 4,5 --telegram` (4,5단계 후 A+ 종목 전송)
    - 텔레그램 단독 발송: `python3 main.py --telegram-only` (분석 없이 기존 리포트만 전송)
    - 깃허브 자동 푸시   : `python3 main.py --push-git` (리포트/결과 파일 GitHub Push: "주식분석_자동화_YYYYMMDD")
@@ -164,16 +165,76 @@ def load_env_file():
         except Exception:
             pass
 
-def send_telegram_notification(bot_token, chat_id, target_date=None):
+def send_telegram_pdf_document(bot_token, chat_id, pdf_path):
     """
-    분석 완료 후 A+ 등급 핵심 주도주 종목명을 텔레그램 메시지로 전송합니다.
+    ============================================================================
+    📌 [보조 함수] 텔레그램 PDF 리포트 파일 자동 업로드 및 전송 (sendDocument)
+    ============================================================================
+    - 텔레그램 봇 API의 'sendDocument' 엔드포인트를 호출하여
+      생성된 PDF 리포트 파일(pdf/report_YYYYMMDD.pdf)을 대화방으로 직접 업로드합니다.
+    - 외부 라이브러리 없이 파이썬 표준 라이브러리(urllib)로 멀티파트 폼 데이터
+      (multipart/form-data) 규격을 조립하여 안전하게 파일 바이너리를 전달합니다.
     """
+    if not os.path.exists(pdf_path):
+        return False, f"PDF 파일 없음 ({pdf_path})"
+
+    # 텔레그램 문서 전송 API 엔드포인트 URL
+    url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
+    # HTTP 멀티파트 데이터 구분을 위한 바운더리 스트링
+    boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+    
+    filename = os.path.basename(pdf_path)
+    
+    try:
+        # PDF 파일의 바이너리 데이터 읽기
+        with open(pdf_path, "rb") as f:
+            file_bytes = f.read()
+
+        # HTTP 멀티파트 바디 데이터 조립 시작
+        body = []
+        # 1) 수신 대화방 ID (chat_id) 필드
+        body.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"chat_id\"\r\n\r\n{chat_id}\r\n".encode('utf-8'))
+        # 2) 파일 설명/캡션 (caption) 필드
+        body.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"caption\"\r\n\r\n📄 [AI 주도주 종합 분석 PDF 리포트]\r\n".encode('utf-8'))
+        # 3) PDF 문서 파일 데이터 (document) 필드
+        body.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"document\"; filename=\"{filename}\"\r\nContent-Type: application/pdf\r\n\r\n".encode('utf-8'))
+        body.append(file_bytes)
+        body.append(f"\r\n--{boundary}--\r\n".encode('utf-8'))
+        
+        payload = b"".join(body)
+        headers = {
+            "Content-Type": f"multipart/form-data; boundary={boundary}"
+        }
+
+        # HTTP POST 요청 발송
+        req = urllib.request.Request(url, data=payload, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as response:
+            res_body = json.loads(response.read().decode("utf-8"))
+            if res_body.get("ok"):
+                return True, f"PDF 리포트({filename}) 전송 완료"
+            else:
+                return False, f"텔레그램 API 응답 오류 ({res_body})"
+    except Exception as e:
+        return False, f"PDF 전송 중 예외 발생 ({e})"
+
+def send_telegram_notification(bot_token, chat_id, target_date=None, send_pdf=False):
+    """
+    ============================================================================
+    📌 [텔레그램 메세지 및 PDF 리포트 통합 전송 함수]
+    ============================================================================
+    1. 역할:
+       - 4단계 분석 결과를 바탕으로 포착된 A+ 등급 핵심 주도주 요약 텍스트(`종목명 - 섹터`)를 발송합니다.
+       - `pdf/report_YYYYMMDD.pdf` 파일이 존재하거나 `--pdf` 옵션이 지정된 경우
+         PDF 종합 보고서 파일도 텔레그램 대화방에 자동으로 첨부하여 발송합니다.
+    """
+    # 1. 텔레그램 인증 정보 확인
     if not bot_token or not chat_id:
         msg = "TELEGRAM_BOT_TOKEN 또는 TELEGRAM_CHAT_ID 미설정"
         print(f"\n⚠️ [텔레그램 경고] --telegram 옵션이 켜졌으나 {msg} 상태입니다.")
-        print("💡 사용 방법: python3 main.py --step 4,5 --telegram --bot-token YOUR_TOKEN --chat-id YOUR_CHAT_ID (또는 .env 설정)")
+        print("💡 사용 방법: .env 파일 설정 또는 --bot-token / --chat-id 옵션으로 전달하세요.")
         return False, msg
 
+    # 2. 대상 분석 결과 CSV 파일(report_YYYYMMDD.csv) 경로 감지
     reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
     if not target_date:
         csv_files = [f for f in os.listdir(reports_dir) if f.startswith("report_") and f.endswith(".csv")]
@@ -192,6 +253,7 @@ def send_telegram_notification(bot_token, chat_id, target_date=None):
 
     date_str = os.path.basename(report_file).replace("report_", "").replace(".csv", "")
     
+    # 3. CSV 파일 읽어 A+ 등급 주도주 추출
     aplus_stocks = []
     a_stocks = []
     try:
@@ -213,6 +275,7 @@ def send_telegram_notification(bot_token, chat_id, target_date=None):
         print(f"⚠️ [텔레그램 오류] {msg}")
         return False, msg
 
+    # 4. 요약 텍스트 메세지 내용 조립 (종목명 - 섹터)
     lines = [f"🚀 <b>[A+ 주도주 알림 - {date_str}]</b>", ""]
     if aplus_stocks:
         for code, name, sector, price in aplus_stocks:
@@ -223,6 +286,7 @@ def send_telegram_notification(bot_token, chat_id, target_date=None):
 
     message_text = "\n".join(lines)
     
+    # 5. 텔레그램 요약 메세지 발송 (sendMessage API)
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -230,6 +294,7 @@ def send_telegram_notification(bot_token, chat_id, target_date=None):
         "parse_mode": "HTML"
     }
     
+    text_sent = False
     try:
         req = urllib.request.Request(
             url,
@@ -240,16 +305,26 @@ def send_telegram_notification(bot_token, chat_id, target_date=None):
             res_body = json.loads(response.read().decode("utf-8"))
             if res_body.get("ok"):
                 desc = f"A+ 등급 {len(aplus_stocks)}개 전송 완료"
-                print(f"📲 [텔레그램 전송 성공] {desc}")
-                return True, desc
+                print(f"📲 [텔레그램 메세지 전송 성공] {desc}")
+                text_sent = True
             else:
-                desc = f"API 실패 ({res_body})"
-                print(f"❌ [텔레그램 전송 실패] 응답 내용: {res_body}")
-                return False, desc
+                print(f"❌ [텔레그램 메세지 전송 실패] 응답: {res_body}")
     except Exception as e:
-        desc = f"네트워크/API 예외 발생 ({e})"
-        print(f"❌ [텔레그램 전송 오류] {desc}")
-        return False, desc
+        print(f"❌ [텔레그램 메세지 전송 오류] {e}")
+
+    # 6. PDF 리포트 파일(pdf/report_YYYYMMDD.pdf)이 존재하는 경우 PDF 문서 첨부 자동 발송
+    pdf_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pdf", f"report_{date_str}.pdf")
+    pdf_status = ""
+    if os.path.exists(pdf_path):
+        pdf_success, pdf_msg = send_telegram_pdf_document(bot_token, chat_id, pdf_path)
+        if pdf_success:
+            print(f"📄 [텔레그램 PDF 리포트 전송 성공] {pdf_msg}")
+            pdf_status = " + PDF 리포트 첨부 발송 완료"
+        else:
+            print(f"⚠️ [텔레그램 PDF 전송 경고] {pdf_msg}")
+
+    final_desc = f"A+ 등급 {len(aplus_stocks)}개 전송 완료{pdf_status}"
+    return text_sent, final_desc
 
 def run_git_auto_push(target_date=None):
     """
@@ -263,7 +338,7 @@ def run_git_auto_push(target_date=None):
     print("=" * 90)
     
     try:
-        res_add = subprocess.run(["git", "add", "reports/", "docs/", "index.html", "style.css", "app.js", "main.py", "stockDesc1.html"], capture_output=True, text=True)
+        res_add = subprocess.run(["git", "add", "reports/", "pdf/", "docs/", "index.html", "style.css", "app.js", "main.py", "stockDesc1.html", "getEtfAiReport.py"], capture_output=True, text=True)
         if res_add.returncode != 0:
             print(f"⚠️ [Git Add 경고] {res_add.stderr}")
             
@@ -316,6 +391,7 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="스크립트별 처리 종목 수 제한 (테스트용)")
     parser.add_argument("--top-n", type=int, default=10, help="2단계 ETF당 상위 N개 종목 수집 (기본값: 10)")
     parser.add_argument("--date", type=str, help="분석 대상 거래일자 (YYYYMMDD 형식, 미지정 시 API 최신 마감 거래일 자동 감지)")
+    parser.add_argument("--pdf", action="store_true", help="5단계 리포트 생성 시 PDF 파일(reports/report_YYYYMMDD.pdf)을 함께 생성합니다.")
 
     # 깃푸시 및 텔레그램 전송 옵션
     parser.add_argument("--push-git", "--git", action="store_true", help="분석 완료 후 Git 커밋 및 Push를 자동으로 실행합니다. (기본값: False)")
@@ -425,7 +501,9 @@ def main():
         extra = []
         if args.date:
             extra.extend(["--date", str(args.date)])
-        run_step(5, "AI 추세추종 분석 마크다운 리포트 생성", "getEtfAiReport.py", extra)
+        if args.pdf:
+            extra.extend(["--pdf"])
+        run_step(5, "AI 추세추종 분석 리포트(MD 및 PDF) 생성", "getEtfAiReport.py", extra)
 
     telegram_status_msg = "미실행 (옵션 --telegram 미사용)"
     git_status_msg = "미실행 (옵션 --push-git 미사용)"
@@ -433,9 +511,9 @@ def main():
     # 📲 텔레그램 알림 발송 옵션이 지정된 경우
     if args.telegram:
         print("\n" + "=" * 90)
-        print("📲 [--telegram] 옵션 활성화: A+ 등급 핵심 주도주 텔레그램 알림 메시지 발송을 진행합니다...")
+        print("📲 [--telegram] 옵션 활성화: A+ 등급 핵심 주도주 텔레그램 알림 및 PDF 리포트 발송을 진행합니다...")
         print("=" * 90)
-        success, tg_desc = send_telegram_notification(args.bot_token, args.chat_id, target_date=args.date)
+        success, tg_desc = send_telegram_notification(args.bot_token, args.chat_id, target_date=args.date, send_pdf=args.pdf)
         telegram_status_msg = f"{'성공' if success else '실패/경고'} ({tg_desc})"
 
     # 🚀 Git 커밋 및 Push 옵션이 지정된 경우
