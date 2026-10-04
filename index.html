@@ -17,12 +17,13 @@
   <!-- Custom CSS -->
   <link rel="stylesheet" href="style.css">
   
-  <!-- External CDN Libraries (PapaParse, Marked, Chart.js) -->
+  <!-- External CDN Libraries (PapaParse, Marked, Chart.js, Mermaid) -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 </head>
-<body class="dark-theme">
+<body class="light-theme">
   <!-- App Container -->
   <div class="app-layout">
     
@@ -62,6 +63,10 @@
             <button class="nav-btn active" id="navBtnMain" onclick="switchView('dashboard')">
               <i class="fa-solid fa-house-signal"></i>
               <span>통합 통계 대시보드</span>
+            </button>
+            <button class="nav-btn" id="navBtnStrategy" onclick="switchView('strategy')">
+              <i class="fa-solid fa-chess-knight"></i>
+              <span>추세추종전략</span>
             </button>
           </nav>
         </div>
@@ -363,9 +368,6 @@
         <!-- View 2: Daily AI Report Markdown Render -->
         <section id="viewReport" class="view-panel">
           <div class="report-header-bar">
-            <button class="btn-back" onclick="switchView('dashboard')">
-              <i class="fa-solid fa-arrow-left"></i> 대시보드로 돌아가기
-            </button>
             <div class="report-title-info">
               <h2 id="reportPageTitle">📅 AI 종합 추세추종 리포트</h2>
               <div class="report-date-picker-wrap">
@@ -384,9 +386,6 @@
         <!-- View 3: Stock Detail Page -->
         <section id="viewStockDetail" class="view-panel">
           <div class="report-header-bar">
-            <button class="btn-back" onclick="goBackToDashboard()">
-              <i class="fa-solid fa-arrow-left"></i> 대시보드로 돌아가기
-            </button>
             <div class="report-title-info">
               <h2 id="detailStockTitle">종목 상세 분석</h2>
               <span class="badge-grade grade-aplus" id="detailStockGradeBadge">A+</span>
@@ -508,6 +507,22 @@
             </div>
           </div>
 
+        </section>
+
+        <!-- View 4: Trend Strategy (stockDesc1) Page -->
+        <section id="viewStrategy" class="view-panel">
+          <div class="report-header-bar">
+            <div class="report-title-info">
+              <h2><i class="fa-solid fa-chess-knight highlight-gold"></i> ETF 주도주 추세추종 매매 전략</h2>
+              <span class="history-badge">Strategy Manual</span>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div id="strategyMarkdownRenderBox" class="markdown-card">
+              <div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 전략 문서를 불러오는 중입니다...</div>
+            </div>
+          </div>
         </section>
 
       </main>

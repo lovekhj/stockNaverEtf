@@ -118,6 +118,26 @@ def show_interactive_menu():
         
     return steps
 
+class TeeLogger:
+    """
+    터미널 화면 출력(stdout/stderr)을 실시간으로 유지하면서
+    reports/log_YYYYMMDD.txt 파일에 동시에 대화식/자동 실행 로그를 기록하는 클래스
+    """
+    def __init__(self, log_filepath):
+        self.terminal = sys.stdout
+        self.log_filepath = log_filepath
+
+    def write(self, message):
+        self.terminal.write(message)
+        try:
+            with open(self.log_filepath, "a", encoding="utf-8") as f:
+                f.write(message)
+        except Exception:
+            pass
+
+    def flush(self):
+        self.terminal.flush()
+
 def main():
     """
     통합 파이프라인 실행기의 메인 함수입니다.
@@ -179,9 +199,21 @@ def main():
         print("   (전체 파이프라인 1~5단계 실행: python3 main.py --all)")
         steps_to_run = {4, 5}
 
+    # 📌 reports/log_YYYYMMDD.txt 로거 설정
+    today_ymd = datetime.now().strftime("%Y%m%d")
+    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+    os.makedirs(reports_dir, exist_ok=True)
+    log_filepath = os.path.join(reports_dir, f"log_{today_ymd}.txt")
+
+    sys.stdout = TeeLogger(log_filepath)
+    sys.stderr = sys.stdout
+
     total_start = time.time()
     today_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"\n[시작 시각: {today_str}] 선택된 네이버 주식 ETF 분석 파이프라인을 시작합니다 (실행 단계: {sorted(list(steps_to_run))}).")
+    print("\n" + "=" * 90)
+    print(f"📌 [파이프라인 실행 시작 시각: {today_str}] (로그 파일: {log_filepath})")
+    print(f"📌 실행 대상 단계: {sorted(list(steps_to_run))}")
+    print("=" * 90)
 
     # 선택된 단계 순차 실행
     if 1 in steps_to_run:
@@ -215,8 +247,11 @@ def main():
         run_step(5, "AI 추세추종 분석 마크다운 리포트 생성", "getEtfAiReport.py", extra)
 
     total_elapsed = time.time() - total_start
+    finish_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print("\n" + "=" * 90)
-    print(f"🎉 모든 파이프라인 단계 실행 완료! (전체 소요시간: {total_elapsed:.1f}초)")
+    print(f"🎉 [파이프라인 종료 시각: {finish_str}] 모든 파이프라인 단계 실행 완료!")
+    print(f"⏱️ 전체 소요시간: {total_elapsed:.1f}초")
+    print(f"📁 실행 로그 저장 위치: reports/log_{today_ymd}.txt")
     print("=" * 90)
 
 if __name__ == "__main__":

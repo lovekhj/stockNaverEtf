@@ -99,14 +99,19 @@ function initThemeToggle() {
   const btn = document.getElementById("themeToggleBtn");
   const body = document.body;
   
-  // 저장된 테마 불러오기
-  const savedTheme = localStorage.getItem("dashboard_theme") || "dark";
-  if (savedTheme === "light") {
+  // 저장된 테마 불러오기 (기본값: light)
+  const savedTheme = localStorage.getItem("dashboard_theme") || "light";
+  if (savedTheme === "dark") {
+    body.classList.add("dark-theme");
+    body.classList.remove("light-theme");
+    if (btn) btn.innerHTML = '<i class="fa-solid fa-moon"></i>';
+  } else {
     body.classList.add("light-theme");
     body.classList.remove("dark-theme");
-    btn.innerHTML = '<i class="fa-solid fa-sun"></i>';
+    if (btn) btn.innerHTML = '<i class="fa-solid fa-sun"></i>';
   }
 
+  if (!btn) return;
   btn.addEventListener("click", () => {
     if (body.classList.contains("light-theme")) {
       body.classList.remove("light-theme");
@@ -368,8 +373,28 @@ function renderSectorGrid() {
  * 6. A+ 주도주 및 승격 종목 하이라이트 목록 렌더링
  */
 function renderHighlights() {
-  // 1. A+ Table rendering
+  // 1. A+ Table rendering & Sorting (1순위: 과열여부 적정/안전 우선, 2순위: 20일이격도)
+  const overheatRank = (ohStr) => {
+    if (!ohStr || ohStr.includes("적정")) return 1;
+    if (ohStr.includes("이격과도")) return 2;
+    if (ohStr.includes("상승과열")) return 3;
+    if (ohStr.includes("단기과열")) return 4;
+    return 5;
+  };
+
   const aplusList = allStockData.filter(d => d.투자등급 === "A+");
+  
+  aplusList.sort((a, b) => {
+    const oA = overheatRank(a.과열여부);
+    const oB = overheatRank(b.과열여부);
+    if (oA !== oB) {
+      return oA - oB;
+    }
+    const iA = parseFloat((a["20일이격도"] || "0").replace(/%/g, "") || 0);
+    const iB = parseFloat((b["20일이격도"] || "0").replace(/%/g, "") || 0);
+    return iA - iB;
+  });
+
   const aplusTbody = document.getElementById("aplusTableBody");
   document.getElementById("aplusCardBadge").innerText = `${aplusList.length}종목`;
 
@@ -395,7 +420,7 @@ function renderHighlights() {
         }
 
         tr.innerHTML = `
-          <td><code>${row.종목코드}</code></td>
+          <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
           <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
           <td><span class="stock-sector-tag">${row.섹터}</span></td>
           <td><span class="count-pill">${row["20일이격도"] || "100.0%"}</span></td>
@@ -432,7 +457,7 @@ function renderHighlights() {
           : '<span class="badge-dual no">-</span>';
 
         tr.innerHTML = `
-          <td><code>${row.종목코드}</code></td>
+          <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
           <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
           <td><span class="stock-sector-tag">${row.섹터}</span></td>
           <td><strong style="color: var(--color-upgraded);">${row.등급변동}</strong></td>
@@ -465,7 +490,7 @@ function renderHighlights() {
           : '<span class="badge-dual no">-</span>';
 
         tr.innerHTML = `
-          <td><code>${row.종목코드}</code></td>
+          <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
           <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
           <td><span class="stock-sector-tag">${row.섹터}</span></td>
           <td><strong style="color: #ef4444;">${row.등급변동}</strong></td>
@@ -522,21 +547,62 @@ function applyFiltersAndRenderTable() {
     return true;
   });
 
-  // Table Sort
+  // Table Sort (1순위: 투자등급 A+->A->B->C, 2순위: 과열여부 적정/안전 우선)
   const gradeRank = { "A+": 1, "A": 2, "B": 3, "C": 4 };
+  const overheatRank = (ohStr) => {
+    if (!ohStr || ohStr.includes("적정")) return 1;
+    if (ohStr.includes("이격과도")) return 2;
+    if (ohStr.includes("상승과열")) return 3;
+    if (ohStr.includes("단기과열")) return 4;
+    return 5;
+  };
+
   filteredStockData.sort((a, b) => {
-    let valA = a[sortKey];
-    let valB = b[sortKey];
+    let valA, valB;
 
     if (sortKey === "투자등급") {
       valA = gradeRank[a.투자등급] || 99;
       valB = gradeRank[b.투자등급] || 99;
+      
+      // 1차: 투자등급 비교
+      if (valA !== valB) {
+        return sortAsc ? valA - valB : valB - valA;
+      }
+
+      // 2차: 과열여부 비교 (적정/안전 종목 우선 배치)
+      const oA = overheatRank(a.과열여부);
+      const oB = overheatRank(b.과열여부);
+      if (oA !== oB) {
+        return oA - oB;
+      }
+
+      // 3차: 20일이격도 비교
+      const iA = parseFloat((a["20일이격도"] || "0").replace(/%/g, "") || 0);
+      const iB = parseFloat((b["20일이격도"] || "0").replace(/%/g, "") || 0);
+      return iA - iB;
+
+    } else if (sortKey === "과열여부") {
+      valA = overheatRank(a.과열여부);
+      valB = overheatRank(b.과열여부);
+      
+      if (valA !== valB) {
+        return sortAsc ? valA - valB : valB - valA;
+      }
+
+      // 2차: 투자등급 비교
+      const gA = gradeRank[a.투자등급] || 99;
+      const gB = gradeRank[b.투자등급] || 99;
+      return gA - gB;
+
     } else if (sortKey === "현재가") {
       valA = parseInt((a.현재가 || "0").replace(/,/g, "") || 0, 10);
       valB = parseInt((b.현재가 || "0").replace(/,/g, "") || 0, 10);
     } else if (sortKey === "20일이격도") {
       valA = parseFloat((a["20일이격도"] || "0").replace(/%/g, "") || 0);
       valB = parseFloat((b["20일이격도"] || "0").replace(/%/g, "") || 0);
+    } else {
+      valA = a[sortKey] || "";
+      valB = b[sortKey] || "";
     }
 
     if (valA < valB) return sortAsc ? -1 : 1;
@@ -589,7 +655,7 @@ function renderTableRows() {
     }
 
     tr.innerHTML = `
-      <td><code>${row.종목코드}</code></td>
+      <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
       <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
       <td><span class="stock-sector-tag">${row.섹터}</span></td>
       <td><span class="badge-grade ${gradeBadgeClass}">${row.투자등급}</span></td>
@@ -735,11 +801,56 @@ function switchView(viewName) {
   if (viewName === 'dashboard') {
     document.getElementById("viewDashboard").classList.add("active");
     document.getElementById("navBtnMain").classList.add("active");
+  } else if (viewName === 'strategy') {
+    document.getElementById("viewStrategy").classList.add("active");
+    const navBtn = document.getElementById("navBtnStrategy");
+    if (navBtn) navBtn.classList.add("active");
+    loadStrategyContent();
   } else if (viewName === 'report') {
     document.getElementById("viewReport").classList.add("active");
   } else if (viewName === 'stockDetail') {
     document.getElementById("viewStockDetail").classList.add("active");
   }
+}
+
+function loadStrategyContent() {
+  const renderBox = document.getElementById("strategyMarkdownRenderBox");
+  if (!renderBox) return;
+
+  renderBox.innerHTML = `<div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 추세추종 매매 전략 HTML을 불러오는 중입니다...</div>`;
+
+  fetch('docs/stockDesc1.html')
+    .then(res => {
+      if (!res.ok) return fetch('stockDesc1.html');
+      return res;
+    })
+    .then(res => {
+      if (!res.ok) throw new Error("STRATEGY_HTML_NOT_FOUND");
+      return res.text();
+    })
+    .then(htmlText => {
+      // HTML 내용에서 body 내부 컨테이너만 추출하거나 전체 바인딩
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlText, 'text/html');
+      const container = doc.querySelector('.strategy-container');
+      
+      if (container) {
+        renderBox.innerHTML = container.outerHTML;
+      } else {
+        renderBox.innerHTML = htmlText;
+      }
+
+      if (window.mermaid) {
+        try {
+          mermaid.run({ nodes: renderBox.querySelectorAll('.language-mermaid, .mermaid') });
+        } catch (e) {
+          console.warn("Mermaid render warning:", e);
+        }
+      }
+    })
+    .catch(err => {
+      renderBox.innerHTML = `<div style="color: #ef4444; padding: 2rem; text-align: center;">❌ 추세추종 매매 전략 HTML을 불러오지 못했습니다. (${err.message})</div>`;
+    });
 }
 
 function selectDateReport(dateStr) {

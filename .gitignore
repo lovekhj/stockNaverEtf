@@ -53,6 +53,8 @@ venv.bak/
 .env.*
 !.env.example
 *.log
+reports/log_*.txt
+cron.log
 
 # Temporary & Swap Files
 *.tmp
