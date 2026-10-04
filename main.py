@@ -20,7 +20,8 @@
    - 대화형 메뉴 (추천) : `python3 main.py` (엔터 치면 기본 4+5단계 실행)
    - 전체 파이프라인    : `python3 main.py --all` (1단계부터 5단계까지 순차 실행)
    - 특정 단계 지정     : `python3 main.py --step 4,5`
-   - 텔레그램 알림 발송 : `python3 main.py --telegram` (포착된 A+ 등급 종목만 전송)
+   - 텔레그램 분석+알림: `python3 main.py --step 4,5 --telegram` (4,5단계 후 A+ 종목 전송)
+   - 텔레그램 단독 발송: `python3 main.py --telegram-only` (분석 없이 기존 리포트만 전송)
    - 깃허브 자동 푸시   : `python3 main.py --push-git` (리포트/결과 파일 GitHub Push)
    - 맥 4시 자동스케줄er: `python3 main.py --step 4,5 --telegram --push-git` (통합 실행)
 ================================================================================
@@ -317,20 +318,28 @@ def main():
     # 깃푸시 및 텔레그램 전송 옵션
     parser.add_argument("--push-git", "--git", action="store_true", help="분석 완료 후 Git 커밋 및 Push를 자동으로 실행합니다. (기본값: False)")
     parser.add_argument("--telegram", "--notify", action="store_true", help="분석 완료 후 A+ 등급 핵심 주도주 종목명을 텔레그램으로 전송합니다. (기본값: False)")
+    parser.add_argument("--telegram-only", "--only-telegram", action="store_true", help="1~5단계 수집/분석을 실행하지 않고 기존 최신 리포트로 텔레그램 알림만 단독 발송합니다.")
     parser.add_argument("--bot-token", type=str, default=os.getenv("TELEGRAM_BOT_TOKEN", ""), help="텔레그램 봇 토큰 (기본값: TELEGRAM_BOT_TOKEN 환경변수)")
     parser.add_argument("--chat-id", type=str, default=os.getenv("TELEGRAM_CHAT_ID", ""), help="텔레그램 대화방/채널 ID (기본값: TELEGRAM_CHAT_ID 환경변수)")
 
     args = parser.parse_args()
 
+    if args.telegram_only:
+        args.telegram = True
+
     steps_to_run = set()
 
     # 인자 옵션 해석
-    if args.all:
+    if args.telegram_only:
+        steps_to_run = set()
+    elif args.all:
         steps_to_run = {1, 2, 3, 4, 5}
     else:
         if args.step:
-            step_str = str(args.step).strip()
-            if "-" in step_str:
+            step_str = str(args.step).strip().lower()
+            if step_str in ("0", "none", "telegram"):
+                steps_to_run = set()
+            elif "-" in step_str:
                 parts = step_str.split("-")
                 if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
                     s_start, s_end = int(parts[0]), int(parts[1])
@@ -353,8 +362,9 @@ def main():
     if not steps_to_run and sys.stdin.isatty() and len(sys.argv) == 1:
         steps_to_run = show_interactive_menu()
 
-    # 옵션 없이 실행할 경우 기본값 4단계 + 5단계 실행
-    if not steps_to_run:
+    # 옵션 없이 실행할 경우 기본값 4단계 + 5단계 실행 (단, 텔레그램 단독 발송 모드가 아닌 경우)
+    is_explicit_telegram_only = args.telegram_only or (args.step and str(args.step).strip().lower() in ("0", "none", "telegram"))
+    if not steps_to_run and not is_explicit_telegram_only:
         print("💡 실행 옵션이 지정되지 않아 기본값으로 4단계(수급 분석) + 5단계(AI 리포트 생성)를 실행합니다.")
         print("   (전체 파이프라인 1~5단계 실행: python3 main.py --all)")
         steps_to_run = {4, 5}
