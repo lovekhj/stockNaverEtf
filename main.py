@@ -22,7 +22,8 @@
    - 특정 단계 지정     : `python3 main.py --step 4,5`
    - 텔레그램 분석+알림: `python3 main.py --step 4,5 --telegram` (4,5단계 후 A+ 종목 전송)
    - 텔레그램 단독 발송: `python3 main.py --telegram-only` (분석 없이 기존 리포트만 전송)
-   - 깃허브 자동 푸시   : `python3 main.py --push-git` (리포트/결과 파일 GitHub Push)
+   - 깃허브 자동 푸시   : `python3 main.py --push-git` (리포트/결과 파일 GitHub Push: "주식분석_자동화_YYYYMMDD")
+   - 깃푸시 단독 실행   : `python3 main.py --push-git-only` (분석 없이 Git 커밋 및 Push만 진행)
    - 맥 4시 자동스케줄er: `python3 main.py --step 4,5 --telegram --push-git` (통합 실행)
 ================================================================================
 """
@@ -252,12 +253,13 @@ def send_telegram_notification(bot_token, chat_id, target_date=None):
 
 def run_git_auto_push(target_date=None):
     """
-    --push-git 옵션이 지정된 경우에만 git add reports/, git commit 및 git push를 전송합니다.
+    --push-git 옵션이 지정된 경우에만 git add, git commit 및 git push를 전송합니다.
     """
     today_str = target_date or datetime.now().strftime("%Y%m%d")
-    commit_msg = f"auto: 4 PM report update ({today_str})"
+    commit_msg = f"주식분석_자동화_{today_str}"
     print("\n" + "=" * 90)
     print("🚀 [--push-git] 옵션 활성화: GitHub 원격 저장소로 자동 커밋 및 푸시를 실행합니다...")
+    print(f"📌 커밋 메시지: {commit_msg}")
     print("=" * 90)
     
     try:
@@ -317,6 +319,7 @@ def main():
 
     # 깃푸시 및 텔레그램 전송 옵션
     parser.add_argument("--push-git", "--git", action="store_true", help="분석 완료 후 Git 커밋 및 Push를 자동으로 실행합니다. (기본값: False)")
+    parser.add_argument("--push-git-only", "--git-only", "--only-git", action="store_true", help="1~5단계 수집/분석을 실행하지 않고, Git 커밋 및 Push만 단독으로 실행합니다.")
     parser.add_argument("--telegram", "--notify", action="store_true", help="분석 완료 후 A+ 등급 핵심 주도주 종목명을 텔레그램으로 전송합니다. (기본값: False)")
     parser.add_argument("--telegram-only", "--only-telegram", action="store_true", help="1~5단계 수집/분석을 실행하지 않고 기존 최신 리포트로 텔레그램 알림만 단독 발송합니다.")
     parser.add_argument("--bot-token", type=str, default=os.getenv("TELEGRAM_BOT_TOKEN", ""), help="텔레그램 봇 토큰 (기본값: TELEGRAM_BOT_TOKEN 환경변수)")
@@ -326,18 +329,20 @@ def main():
 
     if args.telegram_only:
         args.telegram = True
+    if args.push_git_only:
+        args.push_git = True
 
     steps_to_run = set()
 
     # 인자 옵션 해석
-    if args.telegram_only:
+    if args.telegram_only or args.push_git_only:
         steps_to_run = set()
     elif args.all:
         steps_to_run = {1, 2, 3, 4, 5}
     else:
         if args.step:
             step_str = str(args.step).strip().lower()
-            if step_str in ("0", "none", "telegram"):
+            if step_str in ("0", "none", "telegram", "git"):
                 steps_to_run = set()
             elif "-" in step_str:
                 parts = step_str.split("-")
@@ -362,9 +367,13 @@ def main():
     if not steps_to_run and sys.stdin.isatty() and len(sys.argv) == 1:
         steps_to_run = show_interactive_menu()
 
-    # 옵션 없이 실행할 경우 기본값 4단계 + 5단계 실행 (단, 텔레그램 단독 발송 모드가 아닌 경우)
-    is_explicit_telegram_only = args.telegram_only or (args.step and str(args.step).strip().lower() in ("0", "none", "telegram"))
-    if not steps_to_run and not is_explicit_telegram_only:
+    # 옵션 없이 실행할 경우 기본값 4단계 + 5단계 실행 (단, 단독 발송 모드가 아닌 경우)
+    is_explicit_standalone = (
+        args.telegram_only or 
+        args.push_git_only or 
+        (args.step and str(args.step).strip().lower() in ("0", "none", "telegram", "git"))
+    )
+    if not steps_to_run and not is_explicit_standalone:
         print("💡 실행 옵션이 지정되지 않아 기본값으로 4단계(수급 분석) + 5단계(AI 리포트 생성)를 실행합니다.")
         print("   (전체 파이프라인 1~5단계 실행: python3 main.py --all)")
         steps_to_run = {4, 5}
