@@ -9,9 +9,9 @@ let allStockData = [];
 let filteredStockData = [];
 let availableDates = [
   "20260918", "20260921", "20260922", "20260923", "20260924",
-  "20260925", "20260928", "20260929", "20260930", "20261001", "20261002"
+  "20260925", "20260928", "20260929", "20260930", "20261001", "20261002", "20261006"
 ];
-let currentDate = "20261002";
+let currentDate = "20261006";
 let stockHistoryCache = {}; // { dateStr: { code: gradeStr } }
 
 // Filter States
@@ -149,7 +149,7 @@ function loadDateExplorer() {
   });
 }
 
-let latestValidDate = "20261002";
+let latestValidDate = "20261006";
 let isHandlingMissingDate = false;
 let modalCloseCallback = null;
 
