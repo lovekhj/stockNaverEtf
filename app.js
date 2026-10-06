@@ -11,7 +11,8 @@ let availableDates = [
   "20260918", "20260921", "20260922", "20260923", "20260924",
   "20260925", "20260928", "20260929", "20260930", "20261001", "20261002", "20261006"
 ];
-let currentDate = "20261006";
+let sortedAvailableDates = [...availableDates].sort((a, b) => b.localeCompare(a));
+let currentDate = sortedAvailableDates[0];
 let stockHistoryCache = {}; // { dateStr: { code: gradeStr } }
 
 // Filter States
@@ -135,7 +136,9 @@ function loadDateExplorer() {
   if (!container) return;
   container.innerHTML = "";
 
-  availableDates.forEach(dateStr => {
+  const sortedDates = [...availableDates].sort((a, b) => b.localeCompare(a));
+
+  sortedDates.forEach(dateStr => {
     const btn = document.createElement("button");
     btn.className = `date-item-btn ${dateStr === currentDate ? "active" : ""}`;
     btn.onclick = () => selectDateReport(dateStr);
