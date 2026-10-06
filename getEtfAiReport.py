@@ -36,14 +36,29 @@ import json
 
 def get_latest_market_bizdate(sample_code="005930"):
     """
-    네이버 증권 API를 호출하여 가장 최근 주식 시장 마감 거래일자(YYYYMMDD)를 자동 감지합니다.
+    네이버 증권 API를 호출하여 가장 최근 주식 시장 마감/거래일자(YYYYMMDD)를 자동 감지합니다.
     """
-    url = f"https://m.stock.naver.com/api/stock/{sample_code}/trend?page=1&pageSize=1"
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
+    # 1) price API (일별 시세 거래일) 우선 감지
+    url_price = f"https://m.stock.naver.com/api/stock/{sample_code}/price?page=1&pageSize=1"
     try:
-        req = urllib.request.Request(url, headers=headers)
+        req = urllib.request.Request(url_price, headers=headers)
+        with urllib.request.urlopen(req) as res:
+            data = json.loads(res.read().decode("utf-8"))
+            prices = data if isinstance(data, list) else data.get("result", [])
+            if prices and isinstance(prices, list) and len(prices) > 0:
+                traded_at = prices[0].get("localTradedAt", "").replace("-", "").strip()
+                if traded_at and len(traded_at) == 8 and traded_at.isdigit():
+                    return traded_at
+    except Exception:
+        pass
+
+    # 2) trend API (수급 거래일) 차선 감지
+    url_trend = f"https://m.stock.naver.com/api/stock/{sample_code}/trend?page=1&pageSize=1"
+    try:
+        req = urllib.request.Request(url_trend, headers=headers)
         with urllib.request.urlopen(req) as res:
             data = json.loads(res.read().decode("utf-8"))
             trends = data if isinstance(data, list) else data.get("result", [])
@@ -53,6 +68,7 @@ def get_latest_market_bizdate(sample_code="005930"):
                     return bizdate
     except Exception:
         pass
+
     return datetime.now().strftime("%Y%m%d")
 
 def find_target_csv(target_date=None):
