@@ -20,6 +20,7 @@
    - 대화형 메뉴 (추천) : `python3 main.py` (엔터 치면 기본 4+5단계 실행)
    - 전체 파이프라인    : `python3 main.py --all` (1단계부터 5단계까지 순차 실행)
    - 특정 단계 지정     : `python3 main.py --step 4,5`
+   - 특정 거래일자 지정: `python3 main.py --date 20261006` (미지정 시 최신 장마감 거래일 자동 감지)
    - PDF 리포트 생성   : `python3 main.py --step 5 --pdf` (MD 및 PDF 리포트 동시 생성)
    - 텔레그램 분석+알림: `python3 main.py --step 4,5 --telegram` (4,5단계 후 A+ 종목 전송)
    - 텔레그램 단독 발송: `python3 main.py --telegram-only` (분석 없이 기존 리포트만 전송)
