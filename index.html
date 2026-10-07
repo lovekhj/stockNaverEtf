@@ -68,26 +68,13 @@
               <i class="fa-solid fa-chess-knight"></i>
               <span>추세추종전략</span>
             </button>
+            <button class="nav-btn" id="navBtnPriority" onclick="switchView('priorityStrategy')">
+              <i class="fa-solid fa-layer-group"></i>
+              <span>매수순위종목선택</span>
+            </button>
           </nav>
         </div>
         
-        <div class="lnb-section">
-          <h3 class="lnb-title"><i class="fa-solid fa-sliders"></i> 등급 즉시 필터</h3>
-          <div class="quick-filter-group">
-            <button class="quick-filter-btn filter-aplus" onclick="filterByGradeQuick('A+')">
-              <span class="dot aplus"></span> A+ 최상위주
-              <span class="count-pill" id="quickCountAplus">0</span>
-            </button>
-            <button class="quick-filter-btn filter-a" onclick="filterByGradeQuick('A')">
-              <span class="dot a"></span> A 우량 수급주
-              <span class="count-pill" id="quickCountA">0</span>
-            </button>
-            <button class="quick-filter-btn filter-upgraded" onclick="filterByUpgradeQuick()">
-              <i class="fa-solid fa-arrow-trend-up"></i> 오늘 등급 상향
-              <span class="count-pill" id="quickCountUpgraded">0</span>
-            </button>
-          </div>
-        </div>
 
         <div class="lnb-section lnb-history">
           <div class="history-header">
@@ -95,8 +82,34 @@
             <span class="history-badge">Calendar</span>
           </div>
           
-          <div class="date-picker-box">
-            <input type="date" id="datePickerInput" onchange="handleDatePickerChange(this.value)">
+          <!-- Interactive Month/Year Grid Calendar Widget -->
+          <div class="custom-calendar-widget">
+            <div class="cal-controls-row">
+              <button class="cal-arrow-btn" onclick="changeCalMonth(-1)" title="이전 달"><i class="fa-solid fa-chevron-left"></i></button>
+              <div class="cal-select-group">
+                <select id="calYearSelect" onchange="handleCalSelectChange()">
+                  <!-- Dynamically populated via JS -->
+                </select>
+                <select id="calMonthSelect" onchange="handleCalSelectChange()">
+                  <!-- Dynamically populated via JS -->
+                </select>
+              </div>
+              <button class="cal-arrow-btn" onclick="changeCalMonth(1)" title="다음 달"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
+
+            <div class="cal-week-header">
+              <span class="sun">일</span>
+              <span>월</span>
+              <span>화</span>
+              <span>수</span>
+              <span>목</span>
+              <span>금</span>
+              <span class="sat">토</span>
+            </div>
+
+            <div class="cal-days-grid" id="calendarDaysGrid">
+              <!-- Dynamically populated via JS -->
+            </div>
           </div>
         </div>
 
@@ -117,6 +130,19 @@
               <div><strong style="color: #818cf8;">🔵 이격과도 (&lt;97%):</strong> 20일선 이탈 / 관망</div>
             </div>
           </div>
+
+          <!-- Candle Shape & Tail Strategy Banner -->
+          <div class="strategy-banner guide-banner" style="margin-top: 0.75rem; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255, 255, 255, 0.12); padding: 0.85rem; border-radius: 10px;">
+            <div class="banner-title" style="color: #38bdf8; font-size: 0.88rem; font-weight: 700; margin-bottom: 0.5rem;">
+              <i class="fa-solid fa-chart-candlestick"></i> 캔들 & 차트 꼬리 매매 판정
+            </div>
+            <div style="font-size: 0.78rem; line-height: 1.5; color: #cbd5e1;">
+              <div style="margin-bottom: 0.35rem;"><strong style="color: #10b981;">🟢 🔨 망치형/아래꼬리:</strong> 저가 매수 방어 → <strong>강력 매수 타점</strong></div>
+              <div style="margin-bottom: 0.35rem;"><strong style="color: #38bdf8;">🟢 📈 양봉 (상승지속):</strong> 시가 대비 종가 상승 → <strong>추세 지속</strong></div>
+              <div style="margin-bottom: 0.35rem;"><strong style="color: #ef4444;">⚠️ 🕯️ 긴 윗꼬리:</strong> 상단 매도세 출회 → <strong>단기 매도/경계</strong></div>
+              <div><strong style="color: #f59e0b;">🟡 ⚖️ 십자형 (Doji):</strong> 매수/매도 팽팽 → <strong>추세 전환 경계</strong></div>
+            </div>
+          </div>
         </div>
       </aside>
       
@@ -126,166 +152,6 @@
         <!-- View 1: Main Dashboard -->
         <section id="viewDashboard" class="view-panel active">
           
-          <!-- KPI Metrics Row -->
-          <div class="kpi-grid">
-            <div class="kpi-card card-total">
-              <div class="kpi-icon"><i class="fa-solid fa-cubes"></i></div>
-              <div class="kpi-info">
-                <span class="kpi-label">분석 대상 주도주</span>
-                <span class="kpi-value" id="kpiTotalCount">0</span>
-                <span class="kpi-sub">국내 주식형 ETF Top10</span>
-              </div>
-            </div>
-            
-            <div class="kpi-card card-aplus">
-              <div class="kpi-icon"><i class="fa-solid fa-fire"></i></div>
-              <div class="kpi-info">
-                <span class="kpi-label">🔥 A+ 등급 (정배열 대세주)</span>
-                <span class="kpi-value" id="kpiAplusCount">0</span>
-                <span class="kpi-sub" id="kpiAplusRatio">비율 0.0%</span>
-              </div>
-            </div>
-            
-            <div class="kpi-card card-a">
-              <div class="kpi-icon"><i class="fa-solid fa-star"></i></div>
-              <div class="kpi-info">
-                <span class="kpi-label">⭐ A 등급 (우량 수급주)</span>
-                <span class="kpi-value" id="kpiACount">0</span>
-                <span class="kpi-sub" id="kpiARatio">비율 0.0%</span>
-              </div>
-            </div>
-
-            <div class="kpi-card card-dual">
-              <div class="kpi-icon"><i class="fa-solid fa-handshake"></i></div>
-              <div class="kpi-info">
-                <span class="kpi-label">🤝 외인/기관 쌍끌이 유입</span>
-                <span class="kpi-value" id="kpiDualCount">0</span>
-                <span class="kpi-sub" id="kpiDualRatio">비율 0.0%</span>
-              </div>
-            </div>
-            
-            <div class="kpi-card card-upgraded">
-              <div class="kpi-icon"><i class="fa-solid fa-circle-chevron-up"></i></div>
-              <div class="kpi-info">
-                <span class="kpi-label">⬆️ 등급 상향 종목</span>
-                <span class="kpi-value" id="kpiUpgradedCount">0</span>
-                <span class="kpi-sub">이전 분석 대비 승격</span>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Sector Breakdown Bar / Grid Section -->
-          <div class="section-card">
-            <div class="section-header">
-              <h2><i class="fa-solid fa-industry"></i> 주요 섹터/테마별 주도주 분포 현황</h2>
-              <p class="section-desc">11개 핵심 주도 섹터별 A+ / A 등급 포진 현황</p>
-            </div>
-            <div class="sector-grid" id="sectorGrid">
-              <!-- Sector cards populated via JS -->
-            </div>
-          </div>
-          
-          <!-- A+ Top Champions Table Section -->
-          <div class="section-card">
-            <div class="section-header">
-              <div>
-                <h2><i class="fa-solid fa-trophy highlight-gold"></i> 🔥 A+ 등급 핵심 주도주 (정배열 대세상승)</h2>
-                <p class="section-desc">쌍끌이 수급 + 20일선 위 + 5/20/60/120일선 완전 정배열 검증 종목</p>
-              </div>
-              <span class="badge-tag tag-aplus" id="aplusCardBadge">0종목</span>
-            </div>
-            <div class="table-responsive">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>코드</th>
-                    <th>종목명</th>
-                    <th>대표 섹터</th>
-                    <th>20일이격도</th>
-                    <th>과열여부</th>
-                    <th>추세단계</th>
-                    <th>권장진입가 (MA20~MA5)</th>
-                    <th>현재가</th>
-                    <th>등락률</th>
-                    <th>쌍끌이</th>
-                    <th>외인연속</th>
-                    <th>기관연속</th>
-                    <th>20일선위</th>
-                    <th>정배열</th>
-                    <th>상세링크</th>
-                  </tr>
-                </thead>
-                <tbody id="aplusTableBody">
-                  <!-- Populated via JS -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Upgraded Stocks Table Section -->
-          <div class="section-card">
-            <div class="section-header">
-              <div>
-                <h2><i class="fa-solid fa-bolt highlight-blue"></i> 🚀 신규 승격 & A+ 등급 상향 종목</h2>
-                <p class="section-desc">이전 거래일 대비 수급/차트 조건 개선으로 A+ 등급으로 승격되었거나 신규 포착된 최상위 주도주</p>
-              </div>
-              <span class="badge-tag tag-upgraded" id="upgradedCardBadge">0종목</span>
-            </div>
-            <div class="table-responsive">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>코드</th>
-                    <th>종목명</th>
-                    <th>대표 섹터</th>
-                    <th>등급변동</th>
-                    <th>변동이유</th>
-                    <th>현재가</th>
-                    <th>등락률</th>
-                    <th>쌍끌이</th>
-                    <th>20일선위</th>
-                    <th>상세링크</th>
-                  </tr>
-                </thead>
-                <tbody id="upgradedTableBody">
-                  <!-- Populated via JS -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Downgraded Stocks Table Section -->
-          <div class="section-card">
-            <div class="section-header">
-              <div>
-                <h2><i class="fa-solid fa-arrow-trend-down highlight-red"></i> 🔻 A+ 등급 하향 & 리스크 관리 주의 종목</h2>
-                <p class="section-desc">이전 거래일 대비 수급 약화 또는 정배열 이탈로 A+ 등급에서 하향(A+ ➔ A/B/C) 조정된 핵심 주의 종목</p>
-              </div>
-              <span class="badge-tag tag-downgraded" id="downgradedCardBadge">0종목</span>
-            </div>
-            <div class="table-responsive">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th>코드</th>
-                    <th>종목명</th>
-                    <th>대표 섹터</th>
-                    <th>등급변동</th>
-                    <th>변동이유</th>
-                    <th>현재가</th>
-                    <th>등락률</th>
-                    <th>쌍끌이</th>
-                    <th>20일선위</th>
-                    <th>상세링크</th>
-                  </tr>
-                </thead>
-                <tbody id="downgradedTableBody">
-                  <!-- Populated via JS -->
-                </tbody>
-              </table>
-            </div>
-          </div>
-
           <!-- Full Data Table Section -->
           <div class="section-card">
             <div class="section-header table-header-flex">
@@ -293,36 +159,61 @@
                 <h2><i class="fa-solid fa-table-list"></i> 전체 주도주 수급 & 추세 분석 테이블</h2>
                 <p class="section-desc">조건별 필터링 및 네이버 증권 시세 바로가기 제공</p>
               </div>
-              
-              <div class="table-search-bar">
-                <div class="search-input-wrapper">
-                  <i class="fa-solid fa-magnifying-glass"></i>
-                  <input type="text" id="searchInput" placeholder="종목명 또는 6자리 코드 검색..." oninput="handleSearchInput()">
-                </div>
-              </div>
             </div>
             
-            <!-- Table Filter Toolbar -->
-            <div class="table-toolbar">
-              <div class="filter-tabs" id="gradeFilterTabs">
-                <button class="filter-tab active" data-grade="ALL" onclick="setGradeFilter('ALL')">전체 (<span id="tabCountALL">0</span>)</button>
-                <button class="filter-tab" data-grade="A+" onclick="setGradeFilter('A+')">🔥 A+ (<span id="tabCountAplus">0</span>)</button>
-                <button class="filter-tab" data-grade="A" onclick="setGradeFilter('A')">⭐ A (<span id="tabCountA">0</span>)</button>
-                <button class="filter-tab" data-grade="B" onclick="setGradeFilter('B')">🟡 B (<span id="tabCountB">0</span>)</button>
-                <button class="filter-tab" data-grade="C" onclick="setGradeFilter('C')">⚪ C (<span id="tabCountC">0</span>)</button>
-              </div>
-              
-              <div class="select-filters">
-                <select id="sectorSelectFilter" onchange="handleFilterChange()">
-                  <option value="ALL">전체 섹터 보기</option>
-                  <!-- Populated via JS -->
-                </select>
+            <!-- Table Filter & Search Control Toolbar -->
+            <div class="table-toolbar" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between; background: rgba(0, 0, 0, 0.03); padding: 0.85rem 1rem; border-radius: 12px; margin-bottom: 1rem;">
+              <div class="filter-controls-group" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; width: 100%;">
                 
-                <select id="alignmentFilter" onchange="handleFilterChange()">
-                  <option value="ALL">정배열 전체</option>
-                  <option value="O">정배열 달성 (O)</option>
-                  <option value="X">정배열 미달 (X)</option>
+                <!-- 1. Grade Filter Combobox -->
+                <select id="gradeSelectFilter" class="grade-combobox-select" onchange="handleGradeSelectChange()">
+                  <option value="ALL" selected>전체 보기 (0개)</option>
+                  <option value="A+">🔥 A+ 최상위주 (0개)</option>
+                  <option value="A">⭐ A 우량 수급주 (0개)</option>
+                  <option value="B">🟡 B 일반 수급주 (0개)</option>
+                  <option value="C">⚪ C 미달/관망주 (0개)</option>
                 </select>
+
+                <!-- 2. Candle Tail (차트꼬리) Custom Multi-Select Dropdown -->
+                <div class="custom-multiselect-container" id="candleMultiSelectContainer">
+                  <button type="button" class="grade-combobox-select custom-multiselect-btn" id="candleMultiSelectBtn" onclick="toggleCandleDropdown(event)">
+                    <span id="candleMultiSelectLabel">전체 캔들 형태 (0개)</span>
+                    <i class="fa-solid fa-chevron-down multiselect-arrow"></i>
+                  </button>
+                  <div class="custom-multiselect-dropdown" id="candleMultiSelectDropdown">
+                    <div class="multiselect-header-row">
+                      <label class="multiselect-chk-label all-label">
+                        <input type="checkbox" id="chkCandleAll" checked onchange="handleCandleAllToggle(this.checked)">
+                        <span>전체 캔들 선택</span>
+                      </label>
+                    </div>
+                    <div class="multiselect-divider"></div>
+                    <div id="candleOptionList" class="multiselect-options-list">
+                      <!-- Dynamic options populated by JS -->
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 3. Overheat Status (과열여부) Filter Combobox -->
+                <select id="overheatSelectFilter" class="grade-combobox-select" onchange="handleOverheatSelectChange()">
+                  <option value="ALL" selected>전체 과열 판정 (0개)</option>
+                  <option value="적정">🟢 적정 (안전)</option>
+                  <option value="상승과열">🟡 상승과열 (108~115%)</option>
+                  <option value="단기과열">🔴 단기과열 (115% 이상)</option>
+                  <option value="이격과도">🔵 이격과도 (&lt;97%)</option>
+                </select>
+
+                <!-- 4. Search Input & [조회] Button (Combobox matched size) -->
+                <div class="search-input-group" style="display: flex; align-items: center; gap: 0.4rem; width: 290px; flex-shrink: 0;">
+                  <div class="search-input-wrapper" style="flex: 1; width: 100%; margin: 0;">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="searchInput" placeholder="종목명 또는 코드 검색..." oninput="handleSearchInput()" onkeydown="if(event.key==='Enter') executeSearchQuery()" style="border-radius: 12px; padding-top: 0.58rem; padding-bottom: 0.58rem;">
+                  </div>
+                  <button id="btnSearchQuery" class="btn-search-submit" onclick="executeSearchQuery()" style="padding: 0.58rem 0.95rem; border-radius: 12px;">
+                    조회
+                  </button>
+                </div>
+
               </div>
             </div>
 
@@ -336,10 +227,13 @@
                     <th onclick="sortTable('섹터')">대표 섹터 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('투자등급')">투자등급 <i class="fa-solid fa-sort"></i></th>
                     <th>등급변동</th>
+                    <th>변동이유</th>
+                    <th onclick="sortTable('차트꼬리')">차트 꼬리 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('20일이격도')">20일이격도 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('과열여부')">과열여부 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('추세단계')">추세단계 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('현재가')">현재가 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('등락률')">등락률 <i class="fa-solid fa-sort"></i></th>
                     <th>쌍끌이</th>
                     <th>외인연속</th>
                     <th>기관연속</th>
@@ -524,6 +418,22 @@
           <div class="section-card">
             <div id="strategyMarkdownRenderBox" class="markdown-card">
               <div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 전략 문서를 불러오는 중입니다...</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- View 5: Priority Buying Strategy (stockDesc2) Page -->
+        <section id="viewPriorityStrategy" class="view-panel">
+          <div class="report-header-bar">
+            <div class="report-title-info">
+              <h2><i class="fa-solid fa-list-check highlight-blue"></i> 주도주 매수 우선순위 종목 선택 가이드</h2>
+              <span class="history-badge">Priority Guide</span>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div id="priorityStrategyRenderBox" class="markdown-card">
+              <div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 매수 우선순위 가이드를 불러오는 중입니다...</div>
             </div>
           </div>
         </section>

@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ETF 주도주 매수 우선순위 종목 선택 가이드</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@600;700;800&family=Fira+Code:wght@500;700&display=swap" rel="stylesheet">
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+  <div class="strategy-container">
+    <style>
+      /* Base Container Typography & Layout */
+      .strategy-container {
+        max-width: 1040px;
+        width: 100%;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 2.2rem;
+        background: #0b0f19;
+        color: #f8fafc;
+        padding: 2.2rem;
+        border-radius: 24px;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Pretendard', sans-serif;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        word-break: keep-all;
+        word-wrap: break-word;
+        line-height: 1.8;
+        letter-spacing: -0.015em;
+      }
+
+      .strategy-container * {
+        box-sizing: border-box;
+      }
+
+      /* Hero Banner */
+      .hero-banner-priority {
+        background: linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(15, 23, 42, 0.95) 50%, rgba(16, 185, 129, 0.15) 100%);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        border-radius: 20px;
+        padding: 2.5rem;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      }
+
+      .badge-group-priority {
+        display: flex;
+        gap: 0.75rem;
+        margin-bottom: 1.2rem;
+        flex-wrap: wrap;
+      }
+
+      .chip-p {
+        font-size: 0.78rem;
+        font-weight: 700;
+        padding: 0.35rem 0.85rem;
+        border-radius: 50px;
+        letter-spacing: 0.5px;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+
+      .chip-cyan-p { background: rgba(56, 189, 248, 0.18); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
+      .chip-emerald-p { background: rgba(16, 185, 129, 0.18); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); }
+      .chip-gold-p { background: rgba(245, 158, 11, 0.18); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); }
+
+      .hero-title-p {
+        font-family: 'Outfit', -apple-system, sans-serif;
+        font-size: 2.1rem;
+        font-weight: 800;
+        color: #ffffff;
+        margin-bottom: 1.1rem;
+        line-height: 1.35;
+        letter-spacing: -0.02em;
+      }
+
+      .hero-title-p span {
+        background: linear-gradient(90deg, #38bdf8, #10b981);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .hero-desc-p {
+        color: #94a3b8;
+        font-size: 1.02rem;
+        line-height: 1.85;
+      }
+
+      .hero-desc-p strong {
+        color: #f1f5f9;
+      }
+
+      /* Section Header */
+      .section-header-p {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 1.2rem;
+        margin-bottom: 0.5rem;
+      }
+
+      .section-header-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        background: rgba(56, 189, 248, 0.15);
+        color: #38bdf8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.35rem;
+        flex-shrink: 0;
+      }
+
+      .section-header-title {
+        font-family: 'Outfit', sans-serif;
+        font-size: 1.45rem;
+        font-weight: 800;
+        color: #ffffff;
+        line-height: 1.3;
+      }
+
+      .section-header-sub {
+        font-size: 0.88rem;
+        color: #94a3b8;
+        margin-top: 0.25rem;
+      }
+
+      /* Priority Cards */
+      .priority-card-box {
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 20px;
+        padding: 2rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        transition: transform 0.25s ease, box-shadow 0.25s ease;
+      }
+
+      .priority-card-box:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 14px 35px rgba(0, 0, 0, 0.45);
+      }
+
+      .priority-card-box.rank-1-box { border-left: 6px solid #10b981; border-color: rgba(16, 185, 129, 0.35); }
+      .priority-card-box.rank-2-box { border-left: 6px solid #38bdf8; border-color: rgba(56, 189, 248, 0.35); }
+      .priority-card-box.rank-3-box { border-left: 6px solid #f59e0b; border-color: rgba(245, 158, 11, 0.35); }
+      .priority-card-box.rank-4-box { border-left: 6px solid #c084fc; border-color: rgba(192, 132, 252, 0.35); }
+
+      .card-header-priority {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding-bottom: 1.1rem;
+      }
+
+      .rank-title-p {
+        font-family: 'Outfit', sans-serif;
+        font-size: 1.3rem;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        line-height: 1.3;
+      }
+
+      .rank-1-box .rank-title-p { color: #10b981; }
+      .rank-2-box .rank-title-p { color: #38bdf8; }
+      .rank-3-box .rank-title-p { color: #f59e0b; }
+      .rank-4-box .rank-title-p { color: #c084fc; }
+
+      .meta-pills {
+        display: flex;
+        gap: 0.6rem;
+        flex-wrap: wrap;
+      }
+
+      .meta-pill {
+        font-size: 0.82rem;
+        font-weight: 700;
+        padding: 0.35rem 0.85rem;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+
+      .meta-pill.green-p { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+      .meta-pill.cyan-p { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); }
+      .meta-pill.gold-p { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); }
+      .meta-pill.purple-p { background: rgba(192, 132, 252, 0.15); color: #c084fc; border: 1px solid rgba(192, 132, 252, 0.3); }
+
+      /* Condition Card Grid Block */
+      .condition-card-grid {
+        background: rgba(11, 15, 25, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 14px;
+        padding: 1.3rem 1.5rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1.2rem;
+      }
+
+      .condition-item-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      .condition-item-label {
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+
+      .condition-item-value {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+
+      .tag-value-green { color: #10b981; }
+      .tag-value-cyan { color: #38bdf8; }
+      .tag-value-gold { color: #f59e0b; }
+      .tag-value-purple { color: #c084fc; }
+
+      /* Strategy Paragraphs & Bullet Lists */
+      .strategy-body-p {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        font-size: 0.98rem;
+        color: #cbd5e1;
+        line-height: 1.85;
+      }
+
+      .strategy-body-p strong {
+        color: #ffffff;
+      }
+
+      .rationale-box {
+        background: rgba(255, 255, 255, 0.03);
+        border-left: 3px solid rgba(56, 189, 248, 0.5);
+        padding: 1rem 1.2rem;
+        border-radius: 0 10px 10px 0;
+        font-size: 0.96rem;
+      }
+
+      .bullet-list-p {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+        margin-top: 0.2rem;
+        padding-left: 0;
+      }
+
+      .bullet-list-p li {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+        font-size: 0.95rem;
+        color: #cbd5e1;
+        line-height: 1.8;
+      }
+
+      .bullet-list-p li i {
+        margin-top: 0.35rem;
+        font-size: 0.9rem;
+        flex-shrink: 0;
+      }
+
+      .bullet-list-p li i.check-green { color: #10b981; }
+      .bullet-list-p li i.check-cyan { color: #38bdf8; }
+      .bullet-list-p li i.check-gold { color: #f59e0b; }
+      .bullet-list-p li i.check-purple { color: #c084fc; }
+
+      /* Summary Matrix Table */
+      .matrix-table-wrap {
+        overflow-x: auto;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(15, 23, 42, 0.8);
+      }
+
+      table.priority-matrix {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.92rem;
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      table.priority-matrix th {
+        background: rgba(30, 41, 59, 0.95);
+        color: #ffffff;
+        padding: 1.1rem 1.3rem;
+        font-weight: 700;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+        letter-spacing: 0.3px;
+      }
+
+      table.priority-matrix td {
+        padding: 1.1rem 1.3rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        color: #cbd5e1;
+        line-height: 1.7;
+        vertical-align: middle;
+      }
+
+      table.priority-matrix tr:hover td {
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      /* Avoid Warning Container */
+      .avoid-warning-box {
+        background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(15, 23, 42, 0.95) 100%);
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        border-radius: 20px;
+        padding: 2.2rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.4rem;
+        box-shadow: 0 10px 30px rgba(239, 68, 68, 0.1);
+      }
+
+      .avoid-header {
+        color: #ef4444;
+        font-size: 1.35rem;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        border-bottom: 1px solid rgba(239, 68, 68, 0.25);
+        padding-bottom: 1rem;
+      }
+
+      .avoid-content-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1.1rem;
+      }
+
+      .avoid-item-p {
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        padding: 1.25rem 1.5rem;
+        border-radius: 14px;
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        font-size: 0.96rem;
+        color: #cbd5e1;
+        line-height: 1.8;
+      }
+
+      .avoid-item-p i {
+        color: #ef4444;
+        font-size: 1.25rem;
+        margin-top: 0.2rem;
+        flex-shrink: 0;
+      }
+
+      .avoid-item-p strong {
+        color: #ffffff;
+      }
+    </style>
+
+    <!-- 1. Hero Header Banner -->
+    <header class="hero-banner-priority">
+      <div class="badge-group-priority">
+        <span class="chip-p chip-cyan-p"><i class="fa-solid fa-layer-group"></i> STRATEGY SELECTION GUIDE</span>
+        <span class="chip-p chip-emerald-p"><i class="fa-solid fa-shield-halved"></i> RISK / REWARD OPTIMIZED</span>
+        <span class="chip-p chip-gold-p"><i class="fa-solid fa-chart-candlestick"></i> CANDLE & OVERHEAT TAIL</span>
+      </div>
+      <h1 class="hero-title-p">🎯 ETF 주도주 <span>매수 우선순위</span> 종목 선택 가이드</h1>
+      <p class="hero-desc-p">
+        투자등급(Grade), 차트 꼬리(Candle Shape), 20일 이격도(Overheat) 지표를 종합 결합하여 <strong>손익비(Risk/Reward)가 가장 뛰어난 1순위부터 4순위까지의 매수 수칙</strong>과 <strong>절대 매수 금지 종목 선별 기준</strong>을 정리한 실전 가이드입니다.
+      </p>
+    </header>
+
+    <!-- 2. Priority Ranking Details -->
+    <section style="display: flex; flex-direction: column; gap: 2rem;">
+      
+      <div class="section-header-p">
+        <div class="section-header-icon">
+          <i class="fa-solid fa-list-check"></i>
+        </div>
+        <div>
+          <h2 class="section-header-title">단계별 매수 우선순위 수칙 (Priority Ranking)</h2>
+          <p class="section-header-sub">시장 수급 및 차트 형태에 따른 자금 배분, 매수 근거 및 스탑로스 지침</p>
+        </div>
+      </div>
+
+      <!-- 🏆 1순위 Card -->
+      <div class="priority-card-box rank-1-box">
+        <div class="card-header-priority">
+          <div class="rank-title-p">
+            <i class="fa-solid fa-trophy"></i> 🏆 1순위: S급 킹오브킹 (최고의 가성비 눌림목 타점)
+          </div>
+          <div class="meta-pills">
+            <span class="meta-pill green-p"><i class="fa-solid fa-chart-pie"></i> 추천 비중: 30 ~ 50%</span>
+            <span class="meta-pill cyan-p"><i class="fa-solid fa-bullseye"></i> 손익비 극대화 타점</span>
+          </div>
+        </div>
+
+        <div class="condition-card-grid">
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-award"></i> 투자등급</span>
+            <span class="condition-item-value tag-value-gold">⭐ A 등급 (우량 수급주)</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-chart-line"></i> 차트꼬리</span>
+            <span class="condition-item-value tag-value-green">🟢 🔨 망치형 / 🕯️ 아래꼬리</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-temperature-half"></i> 과열여부</span>
+            <span class="condition-item-value tag-value-green">🟢 적정 (안전) (97 ~ 108%)</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-users"></i> 핵심수급</span>
+            <span class="condition-item-value tag-value-cyan">외인/기관 쌍끌이 + 20일선 위</span>
+          </div>
+        </div>
+
+        <div class="strategy-body-p">
+          <div class="rationale-box">
+            <strong>🎯 핵심 매수 이유:</strong> 정배열(A+)이 완성되기 바로 직전 단계에서, 주포(외인/기관)가 20일 이동평균선 근처에서 강력한 저가 매수세로 주가를 받아올려 <strong>망치형 / 아래꼬리</strong>를 형성한 상태입니다.
+          </div>
+          <ul class="bullet-list-p">
+            <li><i class="fa-solid fa-circle-check check-green"></i> <span>이미 급등한 A+ 종목보다 <strong>20일선 손절선(-3%)이 매우 명확</strong>하여 리스크가 적고 손익비가 극대화됩니다.</span></li>
+            <li><i class="fa-solid fa-circle-check check-green"></i> <span>A+ 등급 승격 시 강한 시세 분출이 기대되는 <strong>가장 안전하고 가성비 뛰어난 1차 핵심 분할 매수 구간</strong>입니다.</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 🥈 2순위 Card -->
+      <div class="priority-card-box rank-2-box">
+        <div class="card-header-priority">
+          <div class="rank-title-p">
+            <i class="fa-solid fa-medal"></i> 🥈 2순위: 대세상승 정배열 불타기 (핵심 주도주 추세 가속)
+          </div>
+          <div class="meta-pills">
+            <span class="meta-pill cyan-p"><i class="fa-solid fa-chart-pie"></i> 추천 비중: 20 ~ 30%</span>
+            <span class="meta-pill green-p"><i class="fa-solid fa-fire"></i> 메인 주도주 불타기</span>
+          </div>
+        </div>
+
+        <div class="condition-card-grid">
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-award"></i> 투자등급</span>
+            <span class="condition-item-value tag-value-green">🔥 A+ 등급 (완전 정배열)</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-chart-line"></i> 차트꼬리</span>
+            <span class="condition-item-value tag-value-cyan">🟢 📈 양봉 / 🕯️ 아래꼬리</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-temperature-half"></i> 과열여부</span>
+            <span class="condition-item-value tag-value-green">🟢 적정 (안전) (108% 이내)</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-users"></i> 핵심수급</span>
+            <span class="condition-item-value tag-value-cyan">쌍끌이 + 주도 업종 대장주</span>
+          </div>
+        </div>
+
+        <div class="strategy-body-p">
+          <div class="rationale-box" style="border-left-color: rgba(56, 189, 248, 0.7);">
+            <strong>🎯 핵심 매수 이유:</strong> 5일 > 20일 > 60일 > 120일 이동평균선이 완벽한 정배열을 형성하며 시장을 주도하는 <strong>최고 대장주</strong>입니다.
+          </div>
+          <ul class="bullet-list-p">
+            <li><i class="fa-solid fa-circle-check check-cyan"></i> <span>이격도가 과열되지 않은 안심 구간에서 안정적인 우상향 시세를 형성하고 있습니다.</span></li>
+            <li><i class="fa-solid fa-circle-check check-cyan"></i> <span>시장 확실한 주도주에 자금을 확대하는 <strong>2차 추가 매수 / 피라미딩 불타기 구간</strong>입니다.</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 🥉 3순위 Card -->
+      <div class="priority-card-box rank-3-box">
+        <div class="card-header-priority">
+          <div class="rank-title-p">
+            <i class="fa-solid fa-bolt"></i> 🥉 3순위: 단기 스캘핑 (과열 진입 전 단기 눌림목)
+          </div>
+          <div class="meta-pills">
+            <span class="meta-pill gold-p"><i class="fa-solid fa-chart-pie"></i> 추천 비중: 10 ~ 20%</span>
+            <span class="meta-pill gold-p"><i class="fa-solid fa-triangle-exclamation"></i> 스탑로스 STRICT</span>
+          </div>
+        </div>
+
+        <div class="condition-card-grid">
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-award"></i> 투자등급</span>
+            <span class="condition-item-value tag-value-gold">🔥 A+  또는  ⭐ A</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-chart-line"></i> 차트꼬리</span>
+            <span class="condition-item-value tag-value-gold">🟢 🕯️ 아래꼬리 (눌림반등)</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-temperature-half"></i> 과열여부</span>
+            <span class="condition-item-value tag-value-gold">🟡 상승과열 (108 ~ 115%)</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-users"></i> 핵심수급</span>
+            <span class="condition-item-value tag-value-cyan">강한 모멘텀 유지</span>
+          </div>
+        </div>
+
+        <div class="strategy-body-p">
+          <div class="rationale-box" style="border-left-color: rgba(245, 158, 11, 0.7);">
+            <strong>🎯 핵심 매수 이유:</strong> 수급과 추세 모멘텀은 매우 뛰어나지만, 주가가 20일선과 다소 벌어지며 과열 구간에 들어선 종목입니다.
+          </div>
+          <ul class="bullet-list-p">
+            <li><i class="fa-solid fa-circle-check check-gold"></i> <span>장중 단기 눌림목(아래꼬리) 지지력을 확인한 뒤 짧게 진입합니다.</span></li>
+            <li><i class="fa-solid fa-circle-check check-gold"></i> <span><strong>손절선(-3%)을 반드시 엄수</strong>하며, 목표 수익 달성 시 빠른 단기 차익 실현으로 대응합니다.</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 🏅 4순위 Card -->
+      <div class="priority-card-box rank-4-box">
+        <div class="card-header-priority">
+          <div class="rank-title-p">
+            <i class="fa-solid fa-magnifying-glass-chart"></i> 🏅 4순위: 선제적 선점 (메이저 수급 매집 반등주)
+          </div>
+          <div class="meta-pills">
+            <span class="meta-pill purple-p"><i class="fa-solid fa-chart-pie"></i> 추천 비중: 10% 미만</span>
+            <span class="meta-pill purple-p"><i class="fa-solid fa-eye"></i> 소액 정찰대</span>
+          </div>
+        </div>
+
+        <div class="condition-card-grid">
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-award"></i> 투자등급</span>
+            <span class="condition-item-value tag-value-purple">⭐ A  또는  🟡 B</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-chart-line"></i> 차트꼬리</span>
+            <span class="condition-item-value tag-value-purple">🟢 🔨 망치형</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-temperature-half"></i> 과열여부</span>
+            <span class="condition-item-value tag-value-cyan">🟢 적정  또는  🔵 이격과도</span>
+          </div>
+          <div class="condition-item-cell">
+            <span class="condition-item-label"><i class="fa-solid fa-users"></i> 핵심수급</span>
+            <span class="condition-item-value tag-value-purple">외인/기관 한쪽 3일+ 매집</span>
+          </div>
+        </div>
+
+        <div class="strategy-body-p">
+          <div class="rationale-box" style="border-left-color: rgba(192, 132, 252, 0.7);">
+            <strong>🎯 핵심 매수 이유:</strong> 쌍끌이 조건은 달성되지 않았으나, 메이저 주포(외인/기관) 한쪽이 바닥에서 집요하게 매집하며 망치형 캔들을 달아올린 반등 유망주입니다.
+          </div>
+          <ul class="bullet-list-p">
+            <li><i class="fa-solid fa-circle-check check-purple"></i> <span>A+ 승격 가능성을 보고 소액으로 선제 입성하는 <strong>정찰대 / 선발대용 매수 타점</strong>입니다.</span></li>
+          </ul>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 3. Priority Matrix Table -->
+    <section class="priority-card-box" style="border-left: none;">
+      <div class="section-header-p" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
+        <div class="section-header-icon" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">
+          <i class="fa-solid fa-table-cells"></i>
+        </div>
+        <div>
+          <h2 class="section-header-title">우선순위 매매 조건 종합 비교표</h2>
+          <p class="section-header-sub">한눈에 보는 투자등급, 캔들, 과열도 및 추천 비중 매트릭스</p>
+        </div>
+      </div>
+
+      <div class="matrix-table-wrap">
+        <table class="priority-matrix">
+          <thead>
+            <tr>
+              <th>매수 우선순위</th>
+              <th>투자등급</th>
+              <th>차트 꼬리 형태</th>
+              <th>과열여부</th>
+              <th>매수 판정</th>
+              <th>추천 비중</th>
+              <th>핵심 전략 지침</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong style="color: #10b981;">🏆 1순위 (S급)</strong></td>
+              <td><span class="chip-p chip-gold-p">⭐ A 등급</span></td>
+              <td>🟢 🔨 망치형 / 아래꼬리</td>
+              <td>🟢 적정 (안전)</td>
+              <td><strong style="color: #10b981;">강력 1차 매수</strong></td>
+              <td><strong>30 ~ 50%</strong></td>
+              <td>20일선 지지 눌림목 / 손익비 극대화</td>
+            </tr>
+            <tr>
+              <td><strong style="color: #38bdf8;">🥈 2순위 (불타기)</strong></td>
+              <td><span class="chip-p chip-emerald-p">🔥 A+ 등급</span></td>
+              <td>🟢 📈 양봉 / 아래꼬리</td>
+              <td>🟢 적정 (안전)</td>
+              <td><strong style="color: #38bdf8;">추가 불타기</strong></td>
+              <td><strong>20 ~ 30%</strong></td>
+              <td>정배열 대세 상승 주도주 시세 가속</td>
+            </tr>
+            <tr>
+              <td><strong style="color: #f59e0b;">🥉 3순위 (스캘핑)</strong></td>
+              <td><span class="chip-p chip-emerald-p">A+ / A</span></td>
+              <td>🟢 🕯️ 아래꼬리</td>
+              <td>🟡 상승과열</td>
+              <td><strong style="color: #f59e0b;">단기 스캘핑</strong></td>
+              <td><strong>10 ~ 20%</strong></td>
+              <td>손절선 -3% 엄수 및 빠른 단기 익절</td>
+            </tr>
+            <tr>
+              <td><strong style="color: #c084fc;">🏅 4순위 (정찰대)</strong></td>
+              <td><span class="chip-p chip-cyan-p">A / B</span></td>
+              <td>🟢 🔨 망치형</td>
+              <td>🟢 적정 / 🔵 이격과도</td>
+              <td><strong style="color: #c084fc;">소액 정찰대</strong></td>
+              <td><strong>10% 미만</strong></td>
+              <td>메이저 수급 3일 이상 매집 확인 진입</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 4. Avoid Section -->
+    <section class="avoid-warning-box">
+      <div class="avoid-header">
+        <i class="fa-solid fa-triangle-exclamation"></i> 🚨 절대 매수 금지 (Avoid / 관망 대상 수칙)
+      </div>
+
+      <div class="avoid-content-list">
+        <div class="avoid-item-p">
+          <i class="fa-solid fa-circle-xmark"></i>
+          <div>
+            <strong>⚠️ 긴 윗꼬리 + 🔴 단기과열 (115% 이상):</strong><br>
+            장중에 상단에서 세력 차익실현 물량이 대량 출회된 위험 시그널입니다. 뇌동 추격 매수 시 <strong>고점 상투 벼락</strong>을 맞을 위험이 매우 높습니다.
+          </div>
+        </div>
+
+        <div class="avoid-item-p">
+          <i class="fa-solid fa-circle-xmark"></i>
+          <div>
+            <strong>🔵 이격과도 (&lt;97%) + ⚪ C등급:</strong><br>
+            20일 이동평균선이 깨지고 정배열이 파괴된 역배열 하락 추세 종목입니다. 단순히 주가가 싸졌다는 이유만으로 떨어지는 칼날을 잡지 마십시오.
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</body>
+
+</html>

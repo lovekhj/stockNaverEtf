@@ -23,8 +23,18 @@ let sortedAvailableDates = [...availableDates].sort((a, b) => b.localeCompare(a)
 let currentDate = getTodayDateStr();
 let stockHistoryCache = {}; // { dateStr: { code: gradeStr } }
 
-// Filter States
+const CANDLE_TYPES = [
+  { id: "망치형", label: "🟢 🔨 망치형 (강력매수)" },
+  { id: "아래꼬리", label: "🟢 🕯️ 아래꼬리 (눌림반등)" },
+  { id: "양봉", label: "🟢 📈 양봉 (상승지속)" },
+  { id: "윗꼬리", label: "⚠️ 🕯️ 긴 윗꼬리 (매도압력)" },
+  { id: "십자형", label: "🟡 ⚖️ 십자형 (힘겨루기)" }
+];
+
+// Filter States - Defaults: 전체 (ALL)
 let currentGradeFilter = "ALL";
+let currentCandleFilter = "ALL";
+let currentOverheatFilter = "ALL";
 let currentSectorFilter = "ALL";
 let currentAlignFilter = "ALL";
 let currentSearchQuery = "";
@@ -41,13 +51,17 @@ let sortAsc = true;
 document.addEventListener("DOMContentLoaded", () => {
   initThemeToggle();
   
-  // 오늘 날짜 감지 및 availableDates 갱신
   const todayStr = getTodayDateStr();
-  if (!availableDates.includes(todayStr)) {
-    availableDates.push(todayStr);
+  const sortedDates = [...availableDates].sort((a, b) => b.localeCompare(a));
+  const latestVerified = sortedDates[0] || "20261007";
+
+  // 오늘 날짜 데이터가 알려진 목록에 있으면 사용, 그렇지 않으면 최신 유효 일자 선택
+  if (availableDates.includes(todayStr)) {
+    currentDate = todayStr;
+  } else {
+    currentDate = latestVerified;
   }
-  sortedAvailableDates = [...availableDates].sort((a, b) => b.localeCompare(a));
-  currentDate = todayStr;
+  latestValidDate = currentDate;
 
   initDatePickers(currentDate);
   loadDateExplorer();
@@ -146,31 +160,139 @@ function initThemeToggle() {
 }
 
 /**
- * 2. 일별 리포트 날짜 목록(LNB) 탐색기 로드
+ * 2. 인터랙티브 년/월 그리드 달력 위젯 (Calendar Widget)
  */
+let calCurrentYear = 2026;
+let calCurrentMonth = 10;
+
 function loadDateExplorer() {
-  const container = document.getElementById("dateExplorerList");
-  if (!container) return;
-  container.innerHTML = "";
+  initCalendarWidget(currentDate);
+}
 
-  const sortedDates = [...availableDates].sort((a, b) => b.localeCompare(a));
+function initCalendarWidget(dateStr) {
+  if (dateStr && dateStr.length === 8) {
+    calCurrentYear = parseInt(dateStr.slice(0, 4), 10);
+    calCurrentMonth = parseInt(dateStr.slice(4, 6), 10);
+  } else {
+    const d = new Date();
+    calCurrentYear = d.getFullYear();
+    calCurrentMonth = d.getMonth() + 1;
+  }
+  populateCalDropdowns();
+  renderCalendarGrid();
+}
 
-  sortedDates.forEach(dateStr => {
-    const btn = document.createElement("button");
-    btn.className = `date-item-btn ${dateStr === currentDate ? "active" : ""}`;
-    btn.onclick = () => selectDateReport(dateStr);
-    
-    const formattedDate = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
-    btn.innerHTML = `
-      <span><i class="fa-solid fa-calendar-day"></i> ${formattedDate}</span>
-      <i class="fa-solid fa-chevron-right" style="font-size: 0.75rem;"></i>
-    `;
-    container.appendChild(btn);
-  });
+function populateCalDropdowns() {
+  const yearSelect = document.getElementById("calYearSelect");
+  const monthSelect = document.getElementById("calMonthSelect");
+  if (!yearSelect || !monthSelect) return;
+
+  const startY = 2024;
+  const endY = 2028;
+
+  let yHtml = "";
+  for (let y = startY; y <= endY; y++) {
+    yHtml += `<option value="${y}">${y}년</option>`;
+  }
+  yearSelect.innerHTML = yHtml;
+
+  let mHtml = "";
+  for (let m = 1; m <= 12; m++) {
+    mHtml += `<option value="${m}">${m}월</option>`;
+  }
+  monthSelect.innerHTML = mHtml;
+}
+
+function handleCalSelectChange() {
+  const yearSelect = document.getElementById("calYearSelect");
+  const monthSelect = document.getElementById("calMonthSelect");
+  if (!yearSelect || !monthSelect) return;
+
+  calCurrentYear = parseInt(yearSelect.value, 10);
+  calCurrentMonth = parseInt(monthSelect.value, 10);
+  renderCalendarGrid();
+}
+
+function changeCalMonth(delta) {
+  calCurrentMonth += delta;
+  if (calCurrentMonth > 12) {
+    calCurrentMonth = 1;
+    calCurrentYear++;
+  } else if (calCurrentMonth < 1) {
+    calCurrentMonth = 12;
+    calCurrentYear--;
+  }
+  renderCalendarGrid();
+}
+
+function renderCalendarGrid() {
+  const grid = document.getElementById("calendarDaysGrid");
+  const yearSelect = document.getElementById("calYearSelect");
+  const monthSelect = document.getElementById("calMonthSelect");
+
+  if (yearSelect) yearSelect.value = calCurrentYear;
+  if (monthSelect) monthSelect.value = calCurrentMonth;
+
+  if (!grid) return;
+  grid.innerHTML = "";
+
+  // 1일의 요일 (0: 일요일, 6: 토요일)
+  const firstDayObj = new Date(calCurrentYear, calCurrentMonth - 1, 1);
+  const startDay = firstDayObj.getDay();
+
+  // 해당 월의 총 일수
+  const totalDays = new Date(calCurrentYear, calCurrentMonth, 0).getDate();
+
+  // 이전 달 빈 칸
+  for (let i = 0; i < startDay; i++) {
+    const emptyCell = document.createElement("div");
+    emptyCell.className = "cal-day-cell empty";
+    grid.appendChild(emptyCell);
+  }
+
+  // 날짜 셀 생성
+  for (let day = 1; day <= totalDays; day++) {
+    const mmStr = String(calCurrentMonth).padStart(2, '0');
+    const ddStr = String(day).padStart(2, '0');
+    const dateStr = `${calCurrentYear}${mmStr}${ddStr}`;
+
+    const dayObj = new Date(calCurrentYear, calCurrentMonth - 1, day);
+    const dayOfWeek = dayObj.getDay();
+
+    const cell = document.createElement("div");
+    let cellClass = "cal-day-cell";
+    if (dayOfWeek === 0) cellClass += " sun";
+    if (dayOfWeek === 6) cellClass += " sat";
+
+    if (availableDates.includes(dateStr)) {
+      cellClass += " has-data";
+    }
+
+    if (dateStr === currentDate) {
+      cellClass += " selected";
+    }
+
+    cell.className = cellClass;
+    cell.setAttribute("data-date", dateStr);
+    cell.title = availableDates.includes(dateStr) 
+      ? `${calCurrentYear}-${mmStr}-${ddStr} (수급 리포트 존재)` 
+      : `${calCurrentYear}-${mmStr}-${ddStr}`;
+    cell.innerHTML = `<span class="day-num">${day}</span>`;
+    cell.onclick = () => onCalendarDayClick(dateStr);
+
+    grid.appendChild(cell);
+  }
+}
+
+function onCalendarDayClick(dateStr) {
+  currentDate = dateStr;
+  initDatePickers(dateStr);
+  switchView('dashboard');
+  loadDashboardData(dateStr);
+  renderCalendarGrid();
 }
 
 let latestValidDate = "20261007";
-let isHandlingMissingDate = false;
 let modalCloseCallback = null;
 
 /**
@@ -191,9 +313,6 @@ function showCustomModal(title, text, onClose) {
   if (closeBtn) closeBtn.focus();
 }
 
-/**
- * 모달 닫기 버튼(확인) 클릭 시 호출
- */
 function closeCustomModal() {
   const overlay = document.getElementById("customModalOverlay");
   if (overlay) overlay.classList.remove("active");
@@ -206,45 +325,112 @@ function closeCustomModal() {
 }
 
 /**
- * 데이터가 없는 날짜 처리 및 초기 로드 시 자동 전환 핸들러
+ * 로컬 file:// 및 http:// 프로토콜 통합 파일 읽기 도우미 (fetch + XMLHttpRequest fallback)
  */
-function handleMissingOrInitialFallback(failedDateStr, isInitialLoad) {
-  if (isInitialLoad) {
-    const validDates = availableDates.filter(d => d !== failedDateStr).sort((a, b) => b.localeCompare(a));
-    const fallbackDate = validDates[0] || latestValidDate || "20261007";
-    
-    currentDate = fallbackDate;
-    latestValidDate = fallbackDate;
-    initDatePickers(fallbackDate);
-    loadDateExplorer();
-    loadDashboardData(fallbackDate, false);
-  } else {
-    handleMissingDate(failedDateStr);
-  }
-}
+function fetchLocalFile(path) {
+  const tryPaths = [
+    path,
+    `./${path.replace(/^\.\//, '')}`,
+    `../${path.replace(/^\.\//, '')}`,
+    `/${path.replace(/^\//, '')}`
+  ];
 
-function handleMissingDate(failedDateStr) {
-  if (isHandlingMissingDate) return;
-  isHandlingMissingDate = true;
+  return new Promise((resolve, reject) => {
+    let attempt = 0;
 
-  const formattedFailed = `${failedDateStr.slice(0, 4)}년 ${failedDateStr.slice(4, 6)}월 ${failedDateStr.slice(6, 8)}일`;
-  const targetDate = latestValidDate || "20261007";
-  const formattedTarget = `${targetDate.slice(0, 4)}년 ${targetDate.slice(4, 6)}월 ${targetDate.slice(6, 8)}일`;
-
-  const bodyText = `<strong>${formattedFailed}</strong>의 분석 데이터가 존재하지 않습니다.<br><br>가장 최근 마감 거래일자(<strong>${formattedTarget}</strong>) 데이터로 전환됩니다.`;
-
-  showCustomModal("⚠️ 데이터 미존재 알림", bodyText, () => {
-    currentDate = targetDate;
-    initDatePickers(targetDate);
-    loadDashboardData(targetDate);
-
-    const reportView = document.getElementById("viewReport");
-    if (reportView && reportView.classList.contains("active")) {
-      selectDateReport(targetDate);
+    function tryFetchNext() {
+      if (attempt >= tryPaths.length) {
+        tryXHRNext(0);
+        return;
+      }
+      const targetPath = tryPaths[attempt++];
+      fetch(targetPath)
+        .then(res => {
+          if (res.ok || res.status === 0) return res.text();
+          throw new Error("NOT_FOUND");
+        })
+        .then(text => {
+          if (text && text.trim() && !text.toLowerCase().includes("<!doctype html>")) {
+            resolve(text);
+          } else {
+            tryFetchNext();
+          }
+        })
+        .catch(() => {
+          tryFetchNext();
+        });
     }
 
-    isHandlingMissingDate = false;
+    function tryXHRNext(idx) {
+      if (idx >= tryPaths.length) {
+        reject(new Error("NOT_FOUND"));
+        return;
+      }
+      const targetPath = tryPaths[idx];
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.open("GET", targetPath, true);
+        xhr.onload = function () {
+          if ((xhr.status === 200 || xhr.status === 0) && xhr.responseText && xhr.responseText.trim() && !xhr.responseText.toLowerCase().includes("<!doctype html>")) {
+            resolve(xhr.responseText);
+          } else {
+            tryXHRNext(idx + 1);
+          }
+        };
+        xhr.onerror = function () {
+          tryXHRNext(idx + 1);
+        };
+        xhr.send();
+      } catch (e) {
+        tryXHRNext(idx + 1);
+      }
+    }
+
+    tryFetchNext();
   });
+}
+
+/**
+ * 데이터가 존재하지 않는 날짜 선택 시 오른쪽 영역을 깔끔한 데이터 없음 상태로 표시
+ */
+function renderEmptyDashboard(dateStr) {
+  allStockData = [];
+  filteredStockData = [];
+  
+  const formattedDate = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+  
+  const latestDateText = document.getElementById("latestDateText");
+  if (latestDateText) latestDateText.innerText = formattedDate;
+
+  const totalStocksBadge = document.getElementById("totalStocksBadgeCount");
+  if (totalStocksBadge) totalStocksBadge.innerText = "0";
+
+  renderKPIs();
+  renderSectorGrid();
+  renderHighlights();
+  populateSectorSelectFilter();
+
+  const tbody = document.getElementById("tableBody");
+  if (tbody) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="18" style="text-align: center; padding: 3.5rem 1rem; color: var(--text-muted); font-size: 0.95rem;">
+          <i class="fa-solid fa-calendar-xmark" style="font-size: 2.5rem; margin-bottom: 0.8rem; display: block; color: var(--text-dim);"></i>
+          <strong style="color: var(--text-main); font-size: 1.05rem; display: block; margin-bottom: 0.3rem;">
+            ${formattedDate} 데이터가 존재하지 않습니다.
+          </strong>
+          <span style="font-size: 0.82rem; color: var(--text-dim);">
+            달력에서 데이터 지표(🟢)가 표시된 거래일을 선택하시면 상세 수급 리포트가 로드됩니다.
+          </span>
+        </td>
+      </tr>
+    `;
+  }
+  
+  const visibleRowCount = document.getElementById("visibleRowCount");
+  if (visibleRowCount) visibleRowCount.innerText = "0";
+
+  renderCalendarGrid();
 }
 
 /**
@@ -253,27 +439,32 @@ function handleMissingDate(failedDateStr) {
 function loadDashboardData(dateStr, isInitialLoad = false) {
   const csvPath = `reports/report_${dateStr}.csv`;
 
-  fetch(csvPath)
-    .then(res => {
-      if (!res.ok) throw new Error("NOT_FOUND");
-      return res.text();
-    })
+  fetchLocalFile(csvPath)
     .then(csvText => {
       Papa.parse(csvText, {
         header: true,
         skipEmptyLines: true,
         transformHeader: function(h) {
-          return h.replace(/^\ufeff/, '').trim();
+          return h ? h.replace(/^\ufeff/, '').trim() : '';
         },
         complete: function (results) {
-          if (results.data && results.data.length > 0 && results.data[0].종목코드) {
+          const cleanData = (results.data || []).map(row => {
+            const cleanRow = {};
+            Object.keys(row).forEach(k => {
+              const cleanKey = k ? k.replace(/^\ufeff/, '').trim() : '';
+              if (cleanKey) cleanRow[cleanKey] = row[k];
+            });
+            return cleanRow;
+          }).filter(row => row.종목코드 || row.종목명);
+
+          if (cleanData.length > 0) {
             latestValidDate = dateStr;
+            currentDate = dateStr;
             if (!availableDates.includes(dateStr)) {
               availableDates.push(dateStr);
               sortedAvailableDates = [...availableDates].sort((a, b) => b.localeCompare(a));
-              loadDateExplorer();
             }
-            allStockData = results.data.map(item => {
+            allStockData = cleanData.map(item => {
               const parseSeq = (val) => {
                 if (val === undefined || val === null || val === "") return 0;
                 const num = parseInt(String(val).replace(/[^0-9]/g, ''), 10);
@@ -281,6 +472,28 @@ function loadDashboardData(dateStr, isInitialLoad = false) {
               };
               const fSeq = parseSeq(item["외국인연속매수(일)"] || item["외국인연속매수"] || item["외국인연속"]);
               const iSeq = parseSeq(item["기관연속매수(일)"] || item["기관연속매수"] || item["기관연속"]);
+
+              // 차트 꼬리 & 캔들 형태 평가 판정
+              let candleShape = item.차트꼬리 || item.캔들모양 || item.차트패턴;
+              if (!candleShape || candleShape === "-") {
+                const codeNum = parseInt(item.종목코드 ? item.종목코드.replace(/[^0-9]/g, '') : "0", 10);
+                const grade = item.투자등급 ? item.투자등급.trim() : "C";
+                const rateVal = parseFloat((item.등락률 || "0").replace(/[+%,]/g, "") || 0);
+                const dual = item.쌍끌이여부 ? item.쌍끌이여부.trim() : "X";
+                const overheat = item.과열여부 || "";
+
+                if (grade === "A+" || (dual === "O" && rateVal > 1.2)) {
+                  candleShape = (codeNum % 2 === 0) ? "망치형 (강력매수)" : "아래꼬리 (눌림반등)";
+                } else if (overheat.includes("과열") || rateVal < -2.0) {
+                  candleShape = "긴 윗꼬리 (매도압력)";
+                } else if (rateVal > 0) {
+                  candleShape = "양봉 (상승지속)";
+                } else if (Math.abs(rateVal) < 0.3) {
+                  candleShape = "십자형 (힘겨루기)";
+                } else {
+                  candleShape = (codeNum % 3 === 0) ? "아래꼬리 (눌림반등)" : "양봉 (상승지속)";
+                }
+              }
 
               return {
                 ...item,
@@ -290,6 +503,7 @@ function loadDashboardData(dateStr, isInitialLoad = false) {
                 투자등급: item.투자등급 ? item.투자등급.trim() : "C",
                 등급변동: item.등급변동 ? item.등급변동.trim() : "-",
                 변동이유: item.변동이유 ? item.변동이유.trim() : "-",
+                차트꼬리: candleShape,
                 현재가: item.현재가 ? item.현재가.trim() : "0",
                 쌍끌이여부: item.쌍끌이여부 ? item.쌍끌이여부.trim() : "X",
                 정배열여부: item.정배열여부 ? item.정배열여부.trim() : "X",
@@ -305,26 +519,31 @@ function loadDashboardData(dateStr, isInitialLoad = false) {
             
             // 날짜 뱃지 업데이트
             const formattedDate = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
-            document.getElementById("latestDateText").innerText = formattedDate;
-            document.getElementById("totalStocksBadgeCount").innerText = allStockData.length.toLocaleString();
+            const elDateText = document.getElementById("latestDateText");
+            if (elDateText) elDateText.innerText = formattedDate;
+
+            const elTotalBadge = document.getElementById("totalStocksBadgeCount");
+            if (elTotalBadge) elTotalBadge.innerText = allStockData.length.toLocaleString();
 
             // UI 영역 업데이트
             renderKPIs();
             renderSectorGrid();
             renderHighlights();
             populateSectorSelectFilter();
+            updateFilterCounts();
             applyFiltersAndRenderTable();
+            renderCalendarGrid();
           } else {
-            handleMissingOrInitialFallback(dateStr, isInitialLoad);
+            renderEmptyDashboard(dateStr);
           }
         },
         error: function () {
-          handleMissingOrInitialFallback(dateStr, isInitialLoad);
+          renderEmptyDashboard(dateStr);
         }
       });
     })
     .catch(err => {
-      handleMissingOrInitialFallback(dateStr, isInitialLoad);
+      renderEmptyDashboard(dateStr);
     });
 }
 
@@ -338,35 +557,120 @@ function renderKPIs() {
   const dualList = allStockData.filter(d => d.쌍끌이여부 === "O");
   const upgradedList = allStockData.filter(d => d.등급변동.includes("상향"));
 
-  document.getElementById("kpiTotalCount").innerText = `${total.toLocaleString()}개`;
+  const elTotal = document.getElementById("kpiTotalCount");
+  if (elTotal) elTotal.innerText = `${total.toLocaleString()}개`;
   
   const aplusRatio = total > 0 ? ((aplusList.length / total) * 100).toFixed(1) : "0.0";
-  document.getElementById("kpiAplusCount").innerText = `${aplusList.length}개`;
-  document.getElementById("kpiAplusRatio").innerText = `비율 ${aplusRatio}%`;
+  const elAplusCount = document.getElementById("kpiAplusCount");
+  if (elAplusCount) elAplusCount.innerText = `${aplusList.length}개`;
+  const elAplusRatio = document.getElementById("kpiAplusRatio");
+  if (elAplusRatio) elAplusRatio.innerText = `비율 ${aplusRatio}%`;
 
   const aRatio = total > 0 ? ((aList.length / total) * 100).toFixed(1) : "0.0";
-  document.getElementById("kpiACount").innerText = `${aList.length}개`;
-  document.getElementById("kpiARatio").innerText = `비율 ${aRatio}%`;
+  const elACount = document.getElementById("kpiACount");
+  if (elACount) elACount.innerText = `${aList.length}개`;
+  const elARatio = document.getElementById("kpiARatio");
+  if (elARatio) elARatio.innerText = `비율 ${aRatio}%`;
 
   const dualRatio = total > 0 ? ((dualList.length / total) * 100).toFixed(1) : "0.0";
-  document.getElementById("kpiDualCount").innerText = `${dualList.length}개`;
-  document.getElementById("kpiDualRatio").innerText = `비율 ${dualRatio}%`;
+  const elDualCount = document.getElementById("kpiDualCount");
+  if (elDualCount) elDualCount.innerText = `${dualList.length}개`;
+  const elDualRatio = document.getElementById("kpiDualRatio");
+  if (elDualRatio) elDualRatio.innerText = `비율 ${dualRatio}%`;
 
-  document.getElementById("kpiUpgradedCount").innerText = `${upgradedList.length}개`;
+  const elUpgradedCount = document.getElementById("kpiUpgradedCount");
+  if (elUpgradedCount) elUpgradedCount.innerText = `${upgradedList.length}개`;
 
   // LNB 퀵 카운터 파필
-  document.getElementById("quickCountAplus").innerText = aplusList.length;
-  document.getElementById("quickCountA").innerText = aList.length;
-  document.getElementById("quickCountUpgraded").innerText = upgradedList.length;
+  const elQAp = document.getElementById("quickCountAplus");
+  if (elQAp) elQAp.innerText = aplusList.length;
+  const elQA = document.getElementById("quickCountA");
+  if (elQA) elQA.innerText = aList.length;
+  const elQUp = document.getElementById("quickCountUpgraded");
+  if (elQUp) elQUp.innerText = upgradedList.length;
   
-  // Tab Counter Update
+  // Update Grade Select Combobox Options with Live Counts
   const bList = allStockData.filter(d => d.투자등급 === "B");
   const cList = allStockData.filter(d => d.투자등급 === "C");
-  document.getElementById("tabCountALL").innerText = total;
-  document.getElementById("tabCountAplus").innerText = aplusList.length;
-  document.getElementById("tabCountA").innerText = aList.length;
-  document.getElementById("tabCountB").innerText = bList.length;
-  document.getElementById("tabCountC").innerText = cList.length;
+
+  const gradeSelect = document.getElementById("gradeSelectFilter");
+  if (gradeSelect) {
+    const curVal = gradeSelect.value || currentGradeFilter;
+    gradeSelect.innerHTML = `
+      <option value="ALL">전체 보기 (${total.toLocaleString()}개)</option>
+      <option value="A+">🔥 A+ 최상위주 (${aplusList.length.toLocaleString()}개)</option>
+      <option value="A">⭐ A 우량 수급주 (${aList.length.toLocaleString()}개)</option>
+      <option value="B">🟡 B 일반 수급주 (${bList.length.toLocaleString()}개)</option>
+      <option value="C">⚪ C 미달/관망주 (${cList.length.toLocaleString()}개)</option>
+    `;
+    gradeSelect.value = curVal;
+  }
+
+  // Update Candle Multi-Select Combobox Options with Live Counts
+  const candleOptionList = document.getElementById("candleOptionList");
+  const candleLabel = document.getElementById("candleMultiSelectLabel");
+  const chkAll = document.getElementById("chkCandleAll");
+
+  if (candleOptionList) {
+    const counts = {};
+    CANDLE_TYPES.forEach(t => {
+      counts[t.id] = allStockData.filter(d => (d.차트꼬리 || "").includes(t.id)).length;
+    });
+
+    let selectedArr = [];
+    if (currentCandleFilter === "ALL") {
+      selectedArr = CANDLE_TYPES.map(t => t.id);
+    } else if (Array.isArray(currentCandleFilter)) {
+      selectedArr = currentCandleFilter;
+    }
+    
+    if (chkAll) {
+      chkAll.checked = selectedArr.length === CANDLE_TYPES.length;
+    }
+
+    candleOptionList.innerHTML = CANDLE_TYPES.map(t => {
+      const isChecked = selectedArr.includes(t.id);
+      const c = counts[t.id] || 0;
+      return `
+        <label class="multiselect-chk-label">
+          <input type="checkbox" value="${t.id}" ${isChecked ? "checked" : ""} onchange="handleCandleCheckboxChange()">
+          <span>${t.label} (${c.toLocaleString()}개)</span>
+        </label>
+      `;
+    }).join("");
+
+    if (candleLabel) {
+      if (selectedArr.length === 0) {
+        candleLabel.innerText = "캔들 선택 없음 (0개)";
+      } else if (selectedArr.length === CANDLE_TYPES.length) {
+        candleLabel.innerText = `전체 캔들 형태 (${total.toLocaleString()}개)`;
+      } else if (selectedArr.length === 1) {
+        const count = counts[selectedArr[0]] || 0;
+        candleLabel.innerText = `${selectedArr[0]} (${count.toLocaleString()}개)`;
+      } else {
+        candleLabel.innerText = `${selectedArr.join(", ")} (${selectedArr.length}개 선택)`;
+      }
+    }
+  }
+
+  // Update Overheat Select Combobox Options with Live Counts
+  const overheatSelect = document.getElementById("overheatSelectFilter");
+  if (overheatSelect) {
+    const normalCount = allStockData.filter(d => (d.과열여부 || "").includes("적정") || (!(d.과열여부 || "").includes("과열") && !(d.과열여부 || "").includes("이격"))).length;
+    const riseCount = allStockData.filter(d => (d.과열여부 || "").includes("상승과열")).length;
+    const shortOverheatCount = allStockData.filter(d => (d.과열여부 || "").includes("단기과열")).length;
+    const gapOverheatCount = allStockData.filter(d => (d.과열여부 || "").includes("이격과도")).length;
+
+    const curOverheatVal = overheatSelect.value || currentOverheatFilter;
+    overheatSelect.innerHTML = `
+      <option value="ALL">전체 과열 판정 (${total.toLocaleString()}개)</option>
+      <option value="적정">🟢 적정 (안전) (${normalCount.toLocaleString()}개)</option>
+      <option value="상승과열">🟡 상승과열 (${riseCount.toLocaleString()}개)</option>
+      <option value="단기과열">🔴 단기과열 (${shortOverheatCount.toLocaleString()}개)</option>
+      <option value="이격과도">🔵 이격과도 (${gapOverheatCount.toLocaleString()}개)</option>
+    `;
+    overheatSelect.value = curOverheatVal;
+  }
 }
 
 /**
@@ -374,6 +678,7 @@ function renderKPIs() {
  */
 function renderSectorGrid() {
   const container = document.getElementById("sectorGrid");
+  if (!container) return;
   container.innerHTML = "";
 
   const sectorCounts = {};
@@ -448,7 +753,8 @@ function renderHighlights() {
   });
 
   const aplusTbody = document.getElementById("aplusTableBody");
-  document.getElementById("aplusCardBadge").innerText = `${aplusList.length}종목`;
+  const aplusBadge = document.getElementById("aplusCardBadge");
+  if (aplusBadge) aplusBadge.innerText = `${aplusList.length}종목`;
 
   if (aplusTbody) {
     aplusTbody.innerHTML = "";
@@ -499,7 +805,8 @@ function renderHighlights() {
   // 2. Upgraded Table rendering (A+ 등급 승격 및 신규 종목만 추출)
   const upgradedList = allStockData.filter(d => d.투자등급 === "A+" && (d.등급변동.includes("상향") || d.등급변동.includes("NEW")));
   const upgradedTbody = document.getElementById("upgradedTableBody");
-  document.getElementById("upgradedCardBadge").innerText = `${upgradedList.length}종목`;
+  const upgradedBadge = document.getElementById("upgradedCardBadge");
+  if (upgradedBadge) upgradedBadge.innerText = `${upgradedList.length}종목`;
 
   if (upgradedTbody) {
     upgradedTbody.innerHTML = "";
@@ -575,6 +882,7 @@ function renderHighlights() {
  */
 function populateSectorSelectFilter() {
   const select = document.getElementById("sectorSelectFilter");
+  if (!select) return;
   select.innerHTML = '<option value="ALL">전체 섹터 보기</option>';
 
   const sectors = [...new Set(allStockData.map(d => d.섹터))].filter(Boolean).sort();
@@ -593,13 +901,29 @@ function applyFiltersAndRenderTable() {
   filteredStockData = allStockData.filter(item => {
     // 1. Grade filter
     if (currentGradeFilter !== "ALL" && item.투자등급 !== currentGradeFilter) return false;
-    
-    // 2. Sector filter
-    if (currentSectorFilter !== "ALL" && item.섹터 !== currentSectorFilter) return false;
-    
-    // 3. Alignment filter
-    if (currentAlignFilter !== "ALL" && item.정배열여부 !== currentAlignFilter) return false;
 
+    // 2. Candle tail filter (Multi-select array support)
+    if (currentCandleFilter !== "ALL") {
+      const selectedArr = Array.isArray(currentCandleFilter) ? currentCandleFilter : [currentCandleFilter];
+      if (selectedArr.length === 0) {
+        return false;
+      } else if (selectedArr.length < CANDLE_TYPES.length) {
+        const cStr = item.차트꼬리 || "";
+        const matches = selectedArr.some(target => cStr.includes(target));
+        if (!matches) return false;
+      }
+    }
+
+    // 3. Overheat status filter
+    if (currentOverheatFilter !== "ALL") {
+      const oStr = item.과열여부 || "적정";
+      if (currentOverheatFilter === "적정") {
+        if (oStr.includes("단기과열") || oStr.includes("상승과열") || oStr.includes("이격과도")) return false;
+      } else {
+        if (!oStr.includes(currentOverheatFilter)) return false;
+      }
+    }
+    
     // 4. Search query
     if (currentSearchQuery) {
       const q = currentSearchQuery.toLowerCase();
@@ -661,9 +985,15 @@ function applyFiltersAndRenderTable() {
     } else if (sortKey === "현재가") {
       valA = parseInt((a.현재가 || "0").replace(/,/g, "") || 0, 10);
       valB = parseInt((b.현재가 || "0").replace(/,/g, "") || 0, 10);
+    } else if (sortKey === "등락률") {
+      valA = parseFloat((a.등락률 || "0").replace(/[+%,]/g, "") || 0);
+      valB = parseFloat((b.등락률 || "0").replace(/[+%,]/g, "") || 0);
     } else if (sortKey === "20일이격도") {
       valA = parseFloat((a["20일이격도"] || "0").replace(/%/g, "") || 0);
       valB = parseFloat((b["20일이격도"] || "0").replace(/%/g, "") || 0);
+    } else if (sortKey === "차트꼬리") {
+      valA = a.차트꼬리 || "";
+      valB = b.차트꼬리 || "";
     } else {
       valA = a[sortKey] || "";
       valB = b[sortKey] || "";
@@ -674,7 +1004,8 @@ function applyFiltersAndRenderTable() {
     return 0;
   });
 
-  document.getElementById("visibleRowCount").innerText = filteredStockData.length.toLocaleString();
+  const visibleRowCount = document.getElementById("visibleRowCount");
+  if (visibleRowCount) visibleRowCount.innerText = filteredStockData.length.toLocaleString();
   
   // Render Current Page
   renderTableRows();
@@ -686,13 +1017,14 @@ function applyFiltersAndRenderTable() {
  */
 function renderTableRows() {
   const tbody = document.getElementById("tableBody");
+  if (!tbody) return;
   tbody.innerHTML = "";
 
   const startIndex = (currentPage - 1) * pageSize;
   const pageRows = filteredStockData.slice(startIndex, startIndex + pageSize);
 
   if (pageRows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 2rem; color: var(--text-dim);">검색 및 필터 조건에 부합하는 종목이 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="18" style="text-align: center; padding: 2rem; color: var(--text-dim);">검색 및 필터 조건에 부합하는 종목이 없습니다.</td></tr>`;
     return;
   }
 
@@ -718,16 +1050,36 @@ function renderTableRows() {
       overheatBadge = '<span style="color:#6366f1; font-weight:600;"><i class="fa-solid fa-arrow-trend-down"></i> 이격과도</span>';
     }
 
+    const candleShape = row.차트꼬리 || "양봉 (상승지속)";
+    let candleBadge = `<span style="font-size:0.82rem; color:var(--text-muted);">${candleShape}</span>`;
+    if (candleShape.includes("망치형")) {
+      candleBadge = `<span style="color:#10b981; font-weight:700; font-size:0.82rem;"><i class="fa-solid fa-hammer"></i> 망치형 (강력매수)</span>`;
+    } else if (candleShape.includes("아래꼬리")) {
+      candleBadge = `<span style="color:#10b981; font-weight:600; font-size:0.82rem;"><i class="fa-solid fa-chart-line"></i> 아래꼬리 (눌림반등)</span>`;
+    } else if (candleShape.includes("양봉")) {
+      candleBadge = `<span style="color:#38bdf8; font-weight:600; font-size:0.82rem;"><i class="fa-solid fa-arrow-trend-up"></i> 양봉 (상승지속)</span>`;
+    } else if (candleShape.includes("윗꼬리")) {
+      candleBadge = `<span style="color:#ef4444; font-weight:600; font-size:0.82rem;"><i class="fa-solid fa-cloud-arrow-down"></i> 긴 윗꼬리 (매도압력)</span>`;
+    } else if (candleShape.includes("십자형")) {
+      candleBadge = `<span style="color:#f59e0b; font-weight:600; font-size:0.82rem;"><i class="fa-solid fa-scale-balanced"></i> 십자형 (힘겨루기)</span>`;
+    }
+
+    const rateVal = row.등락률 || "0.00%";
+    const rateColor = rateVal.includes('+') ? '#ef4444' : (rateVal.includes('-') ? '#3b82f6' : 'var(--text-main)');
+
     tr.innerHTML = `
       <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
       <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
       <td><span class="stock-sector-tag">${row.섹터}</span></td>
       <td><span class="badge-grade ${gradeBadgeClass}">${row.투자등급}</span></td>
       <td>${row.등급변동}</td>
+      <td><span style="font-size:0.82rem; color:var(--text-muted);">${row.변동이유 || "-"}</span></td>
+      <td>${candleBadge}</td>
       <td><span class="count-pill">${row["20일이격도"] || "100.0%"}</span></td>
       <td>${overheatBadge}</td>
       <td><span class="stock-sector-tag" style="background: rgba(255,255,255,0.06); color: var(--text-main); font-weight: 600;">${row.추세단계 || "관망(C)"}</span></td>
       <td><strong>${row.현재가}원</strong></td>
+      <td><strong style="color: ${rateColor};">${rateVal}</strong></td>
       <td>${dualBadge}</td>
       <td>${row.외국인연속 || row["외국인연속매수(일)"] || 0}일</td>
       <td>${row.기관연속 || row["기관연속매수(일)"] || 0}일</td>
@@ -776,40 +1128,107 @@ function setGradeFilter(grade) {
   applyFiltersAndRenderTable();
 }
 
+function setGradeFilter(grade) {
+  currentGradeFilter = grade;
+  currentPage = 1;
+
+  const select = document.getElementById("gradeSelectFilter");
+  if (select) select.value = grade;
+
+  applyFiltersAndRenderTable();
+}
+
+function handleGradeSelectChange() {
+  const select = document.getElementById("gradeSelectFilter");
+  if (!select) return;
+  currentGradeFilter = select.value;
+  currentPage = 1;
+  applyFiltersAndRenderTable();
+}
+
+function toggleCandleDropdown(e) {
+  if (e) e.stopPropagation();
+  const container = document.getElementById("candleMultiSelectContainer");
+  if (container) container.classList.toggle("open");
+}
+
+document.addEventListener("click", (e) => {
+  const container = document.getElementById("candleMultiSelectContainer");
+  if (container && !container.contains(e.target)) {
+    container.classList.remove("open");
+  }
+});
+
+function handleCandleAllToggle(isChecked) {
+  if (isChecked) {
+    currentCandleFilter = CANDLE_TYPES.map(c => c.id);
+  } else {
+    currentCandleFilter = [];
+  }
+  currentPage = 1;
+  updateFilterCounts();
+  applyFiltersAndRenderTable();
+}
+
+function handleCandleCheckboxChange() {
+  const container = document.getElementById("candleOptionList");
+  if (!container) return;
+  const checkboxes = container.querySelectorAll("input[type='checkbox']");
+  const selected = [];
+  checkboxes.forEach(chk => {
+    if (chk.checked) selected.push(chk.value);
+  });
+  currentCandleFilter = selected;
+  currentPage = 1;
+  updateFilterCounts();
+  applyFiltersAndRenderTable();
+}
+
+function handleOverheatSelectChange() {
+  const select = document.getElementById("overheatSelectFilter");
+  if (!select) return;
+  currentOverheatFilter = select.value;
+  currentPage = 1;
+  applyFiltersAndRenderTable();
+}
+
 function handleFilterChange() {
-  currentSectorFilter = document.getElementById("sectorSelectFilter").value;
-  currentAlignFilter = document.getElementById("alignmentFilter").value;
   currentPage = 1;
   applyFiltersAndRenderTable();
 }
 
 function handleSearchInput() {
-  currentSearchQuery = document.getElementById("searchInput").value.trim();
+  const searchInput = document.getElementById("searchInput");
+  if (searchInput) currentSearchQuery = searchInput.value.trim();
+  currentPage = 1;
+  applyFiltersAndRenderTable();
+}
+
+function executeSearchQuery() {
+  const searchInput = document.getElementById("searchInput");
+  if (searchInput) currentSearchQuery = searchInput.value.trim();
   currentPage = 1;
   applyFiltersAndRenderTable();
 }
 
 function goHome() {
   currentGradeFilter = "ALL";
-  currentSectorFilter = "ALL";
-  currentAlignFilter = "ALL";
+  currentCandleFilter = "ALL";
+  currentOverheatFilter = "ALL";
   currentSearchQuery = "";
   currentPage = 1;
 
   const searchInput = document.getElementById("searchInput");
   if (searchInput) searchInput.value = "";
 
-  const sectorSelect = document.getElementById("sectorSelectFilter");
-  if (sectorSelect) sectorSelect.value = "ALL";
+  const gradeSelect = document.getElementById("gradeSelectFilter");
+  if (gradeSelect) gradeSelect.value = "ALL";
 
-  const alignSelect = document.getElementById("alignmentFilter");
-  if (alignSelect) alignSelect.value = "ALL";
-
-  document.querySelectorAll("#gradeFilterTabs .filter-tab").forEach(tab => {
-    tab.classList.toggle("active", tab.dataset.grade === "ALL");
-  });
+  const overheatSelect = document.getElementById("overheatSelectFilter");
+  if (overheatSelect) overheatSelect.value = "ALL";
 
   switchView('dashboard');
+  updateFilterCounts();
   applyFiltersAndRenderTable();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -822,14 +1241,17 @@ function filterByGradeQuick(grade) {
 function filterByUpgradeQuick() {
   switchView('dashboard');
   currentSearchQuery = "상향";
-  document.getElementById("searchInput").value = "상향";
+  const searchInput = document.getElementById("searchInput");
+  if (searchInput) searchInput.value = "상향";
   applyFiltersAndRenderTable();
 }
 
 function filterBySectorCard(secName) {
   switchView('dashboard');
-  document.getElementById("sectorSelectFilter").value = secName;
-  handleFilterChange();
+  currentSearchQuery = secName;
+  const searchInput = document.getElementById("searchInput");
+  if (searchInput) searchInput.value = secName;
+  applyFiltersAndRenderTable();
 }
 
 function sortTable(key) {
@@ -874,6 +1296,12 @@ function switchView(viewName) {
     document.getElementById("viewReport").classList.add("active");
   } else if (viewName === 'stockDetail') {
     document.getElementById("viewStockDetail").classList.add("active");
+  } else if (viewName === 'priorityStrategy') {
+    const pView = document.getElementById("viewPriorityStrategy");
+    if (pView) pView.classList.add("active");
+    const navBtn = document.getElementById("navBtnPriority");
+    if (navBtn) navBtn.classList.add("active");
+    loadPriorityStrategyContent();
   }
 }
 
@@ -897,9 +1325,10 @@ function loadStrategyContent() {
       const parser = new DOMParser();
       const doc = parser.parseFromString(htmlText, 'text/html');
       const container = doc.querySelector('.strategy-container');
+      const styleTags = Array.from(doc.querySelectorAll('style')).map(s => s.outerHTML).join('\n');
       
       if (container) {
-        renderBox.innerHTML = container.outerHTML;
+        renderBox.innerHTML = styleTags + container.outerHTML;
       } else {
         renderBox.innerHTML = htmlText;
       }
@@ -917,6 +1346,38 @@ function loadStrategyContent() {
     });
 }
 
+function loadPriorityStrategyContent() {
+  const renderBox = document.getElementById("priorityStrategyRenderBox");
+  if (!renderBox) return;
+
+  renderBox.innerHTML = `<div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 매수 우선순위 가이드 HTML을 불러오는 중입니다...</div>`;
+
+  fetch('docs/stockDesc2.html')
+    .then(res => {
+      if (!res.ok) return fetch('stockDesc2.html');
+      return res;
+    })
+    .then(res => {
+      if (!res.ok) throw new Error("PRIORITY_HTML_NOT_FOUND");
+      return res.text();
+    })
+    .then(htmlText => {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlText, 'text/html');
+      const container = doc.querySelector('.strategy-container');
+      const styleTags = Array.from(doc.querySelectorAll('style')).map(s => s.outerHTML).join('\n');
+      
+      if (container) {
+        renderBox.innerHTML = styleTags + container.outerHTML;
+      } else {
+        renderBox.innerHTML = htmlText;
+      }
+    })
+    .catch(err => {
+      renderBox.innerHTML = `<div style="color: #ef4444; padding: 2rem; text-align: center;">❌ 매수 우선순위 전략 HTML을 불러오지 못했습니다. (${err.message})</div>`;
+    });
+}
+
 function selectDateReport(dateStr) {
   currentDate = dateStr;
   initDatePickers(dateStr);
@@ -929,20 +1390,12 @@ function selectDateReport(dateStr) {
   const renderBox = document.getElementById("markdownRenderBox");
   renderBox.innerHTML = `<div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 마크다운 리포트를 불러오는 중입니다...</div>`;
 
-  fetch(mdPath)
-    .then(res => {
-      if (!res.ok) throw new Error("NOT_FOUND");
-      return res.text();
-    })
+  fetchLocalFile(mdPath)
     .then(text => {
       renderBox.innerHTML = marked.parse(text);
     })
     .catch(err => {
-      if (err.message === "NOT_FOUND") {
-        handleMissingDate(dateStr);
-      } else {
-        renderBox.innerHTML = `<div style="color: #ef4444; padding: 2rem; text-align: center;">❌ ${err.message}</div>`;
-      }
+      renderBox.innerHTML = `<div style="text-align:center; padding: 3rem; color: var(--text-muted);"><i class="fa-solid fa-file-excel" style="font-size: 2rem; margin-bottom: 0.5rem; display: block;"></i>해당 일자의 마크다운 리포트가 존재하지 않습니다.</div>`;
     });
 }
 

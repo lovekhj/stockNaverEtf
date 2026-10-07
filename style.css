@@ -294,7 +294,7 @@ body {
   color: var(--text-muted);
 }
 
-/* History Date Explorer */
+/* History Date Explorer & Custom Calendar Widget */
 .history-header {
   display: flex;
   align-items: center;
@@ -310,12 +310,131 @@ body {
   font-weight: 700;
 }
 
-.date-list {
+.custom-calendar-widget {
+  background: var(--card-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 0.75rem 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.cal-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.2rem;
+  margin-bottom: 0.6rem;
+}
+
+.cal-arrow-btn {
+  background: var(--panel-bg-hover);
+  border: 1px solid var(--panel-border);
+  color: var(--text-main);
+  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.7rem;
+  transition: var(--transition-fast);
+}
+
+.cal-arrow-btn:hover {
+  background: var(--primary-glow);
+  color: var(--primary-accent);
+  border-color: var(--primary-accent);
+}
+
+.cal-select-group {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.cal-select-group select {
+  background: var(--panel-bg-hover);
+  border: 1px solid var(--panel-border);
+  color: var(--text-main);
+  border-radius: 6px;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  outline: none;
+}
+
+.cal-week-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-bottom: 0.4rem;
+}
+
+.cal-week-header .sun { color: #ef4444; }
+.cal-week-header .sat { color: #3b82f6; }
+
+.cal-days-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.cal-day-cell {
+  aspect-ratio: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  max-height: 240px;
-  overflow-y: auto;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  transition: var(--transition-fast);
+  background: transparent;
+  border: 1px solid transparent;
+}
+
+.cal-day-cell.empty {
+  cursor: default;
+  pointer-events: none;
+}
+
+.cal-day-cell:hover:not(.empty) {
+  background: var(--panel-bg-hover);
+  color: var(--text-main);
+}
+
+.cal-day-cell.has-data {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.cal-day-cell.has-data::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--primary-accent);
+  box-shadow: 0 0 6px var(--primary-accent);
+}
+
+.cal-day-cell.selected {
+  background: var(--primary-accent) !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  border-color: var(--primary-accent) !important;
+}
+
+.cal-day-cell.selected::after {
+  background-color: #ffffff !important;
 }
 
 .date-item-btn {
@@ -711,6 +830,151 @@ body {
   font-size: 0.82rem;
   outline: none;
   cursor: pointer;
+}
+
+/* Theme-Aware Grade Combobox Filter */
+.grade-combobox-select {
+  padding: 0.6rem 1.1rem;
+  border-radius: 12px;
+  border: 1.5px solid var(--panel-border-glow);
+  background: var(--card-bg);
+  color: var(--text-main);
+  font-size: 0.92rem;
+  font-weight: 700;
+  outline: none;
+  cursor: pointer;
+  min-width: 240px;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition-fast);
+}
+
+.grade-combobox-select:hover,
+.grade-combobox-select:focus {
+  border-color: var(--primary-accent);
+  box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
+}
+
+.grade-combobox-select option {
+  background: var(--card-bg);
+  color: var(--text-main);
+  padding: 0.5rem;
+}
+
+/* Custom Multi-Select Dropdown Widget */
+.custom-multiselect-container {
+  position: relative;
+  display: inline-block;
+  min-width: 250px;
+}
+
+.custom-multiselect-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  gap: 0.5rem;
+}
+
+.custom-multiselect-btn .multiselect-arrow {
+  font-size: 0.78rem;
+  transition: transform 0.2s ease;
+  color: var(--text-sub);
+}
+
+.custom-multiselect-container.open .multiselect-arrow {
+  transform: rotate(180deg);
+}
+
+.custom-multiselect-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  min-width: 270px;
+  background: var(--card-bg, #111827);
+  border: 1.5px solid var(--panel-border-glow, rgba(6, 182, 212, 0.4));
+  border-radius: 14px;
+  padding: 0.85rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  backdrop-filter: blur(12px);
+}
+
+.custom-multiselect-container.open .custom-multiselect-dropdown {
+  display: block;
+}
+
+.multiselect-header-row {
+  padding-bottom: 0.4rem;
+}
+
+.multiselect-divider {
+  height: 1px;
+  background: var(--panel-border, rgba(255, 255, 255, 0.1));
+  margin: 0.4rem 0 0.5rem 0;
+}
+
+.multiselect-chk-label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-main);
+  transition: background 0.15s ease;
+}
+
+.multiselect-chk-label:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.multiselect-chk-label.all-label {
+  color: var(--primary-accent, #06b6d4);
+  font-weight: 700;
+}
+
+.multiselect-chk-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-accent, #06b6d4);
+  cursor: pointer;
+}
+
+.multiselect-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* Submit Search Button */
+.btn-search-submit {
+  padding: 0.6rem 1.25rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%);
+  color: #ffffff;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.25);
+  transition: var(--transition-fast);
+}
+
+.btn-search-submit:hover {
+  background: linear-gradient(135deg, #0891b2 0%, #2563eb 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(6, 182, 212, 0.35);
 }
 
 /* Data Table Responsive */
