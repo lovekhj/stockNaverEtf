@@ -5,14 +5,22 @@
  */
 
 // Global State Management
+function getTodayDateStr() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}${mm}${dd}`;
+}
+
 let allStockData = [];
 let filteredStockData = [];
 let availableDates = [
   "20260918", "20260921", "20260922", "20260923", "20260924",
-  "20260925", "20260928", "20260929", "20260930", "20261001", "20261002", "20261006"
+  "20260925", "20260928", "20260929", "20260930", "20261001", "20261002", "20261006", "20261007"
 ];
 let sortedAvailableDates = [...availableDates].sort((a, b) => b.localeCompare(a));
-let currentDate = sortedAvailableDates[0];
+let currentDate = getTodayDateStr();
 let stockHistoryCache = {}; // { dateStr: { code: gradeStr } }
 
 // Filter States
@@ -32,9 +40,18 @@ let sortAsc = true;
 // Initialize Dashboard App
 document.addEventListener("DOMContentLoaded", () => {
   initThemeToggle();
+  
+  // 오늘 날짜 감지 및 availableDates 갱신
+  const todayStr = getTodayDateStr();
+  if (!availableDates.includes(todayStr)) {
+    availableDates.push(todayStr);
+  }
+  sortedAvailableDates = [...availableDates].sort((a, b) => b.localeCompare(a));
+  currentDate = todayStr;
+
   initDatePickers(currentDate);
   loadDateExplorer();
-  loadDashboardData(currentDate);
+  loadDashboardData(currentDate, true);
   buildStockHistoryCache();
 });
 
@@ -152,7 +169,7 @@ function loadDateExplorer() {
   });
 }
 
-let latestValidDate = "20261006";
+let latestValidDate = "20261007";
 let isHandlingMissingDate = false;
 let modalCloseCallback = null;
 
@@ -189,14 +206,29 @@ function closeCustomModal() {
 }
 
 /**
- * 데이터가 없는 날짜 선택 시 모달 팝업 및 '닫기' 버튼 누른 후 최신 일자로 자동 이동
+ * 데이터가 없는 날짜 처리 및 초기 로드 시 자동 전환 핸들러
  */
+function handleMissingOrInitialFallback(failedDateStr, isInitialLoad) {
+  if (isInitialLoad) {
+    const validDates = availableDates.filter(d => d !== failedDateStr).sort((a, b) => b.localeCompare(a));
+    const fallbackDate = validDates[0] || latestValidDate || "20261007";
+    
+    currentDate = fallbackDate;
+    latestValidDate = fallbackDate;
+    initDatePickers(fallbackDate);
+    loadDateExplorer();
+    loadDashboardData(fallbackDate, false);
+  } else {
+    handleMissingDate(failedDateStr);
+  }
+}
+
 function handleMissingDate(failedDateStr) {
   if (isHandlingMissingDate) return;
   isHandlingMissingDate = true;
 
   const formattedFailed = `${failedDateStr.slice(0, 4)}년 ${failedDateStr.slice(4, 6)}월 ${failedDateStr.slice(6, 8)}일`;
-  const targetDate = latestValidDate || "20261002";
+  const targetDate = latestValidDate || "20261007";
   const formattedTarget = `${targetDate.slice(0, 4)}년 ${targetDate.slice(4, 6)}월 ${targetDate.slice(6, 8)}일`;
 
   const bodyText = `<strong>${formattedFailed}</strong>의 분석 데이터가 존재하지 않습니다.<br><br>가장 최근 마감 거래일자(<strong>${formattedTarget}</strong>) 데이터로 전환됩니다.`;
@@ -218,7 +250,7 @@ function handleMissingDate(failedDateStr) {
 /**
  * 3. 메인 CSV 분석 데이터 파싱 및 로드 (`reports/report_YYYYMMDD.csv`)
  */
-function loadDashboardData(dateStr) {
+function loadDashboardData(dateStr, isInitialLoad = false) {
   const csvPath = `reports/report_${dateStr}.csv`;
 
   fetch(csvPath)
@@ -236,6 +268,11 @@ function loadDashboardData(dateStr) {
         complete: function (results) {
           if (results.data && results.data.length > 0 && results.data[0].종목코드) {
             latestValidDate = dateStr;
+            if (!availableDates.includes(dateStr)) {
+              availableDates.push(dateStr);
+              sortedAvailableDates = [...availableDates].sort((a, b) => b.localeCompare(a));
+              loadDateExplorer();
+            }
             allStockData = results.data.map(item => {
               const parseSeq = (val) => {
                 if (val === undefined || val === null || val === "") return 0;
@@ -278,16 +315,16 @@ function loadDashboardData(dateStr) {
             populateSectorSelectFilter();
             applyFiltersAndRenderTable();
           } else {
-            handleMissingDate(dateStr);
+            handleMissingOrInitialFallback(dateStr, isInitialLoad);
           }
         },
         error: function () {
-          handleMissingDate(dateStr);
+          handleMissingOrInitialFallback(dateStr, isInitialLoad);
         }
       });
     })
     .catch(err => {
-      handleMissingDate(dateStr);
+      handleMissingOrInitialFallback(dateStr, isInitialLoad);
     });
 }
 
