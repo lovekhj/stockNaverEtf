@@ -150,6 +150,26 @@ import urllib.request
 import urllib.parse
 import json
 
+def update_available_dates_js():
+    """
+    reports/report_YYYYMMDD.csv 파일 목록을 스캔하여 대시보드(index.html)가 읽는
+    reports/available_dates.js (window.AVAILABLE_DATES) 파일을 자동 생성합니다.
+    """
+    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports")
+    dates = sorted(
+        f[len("report_"):-len(".csv")]
+        for f in os.listdir(reports_dir)
+        if f.startswith("report_") and f.endswith(".csv") and f[len("report_"):-len(".csv")].isdigit()
+    )
+    js_path = os.path.join(reports_dir, "available_dates.js")
+    with open(js_path, "w", encoding="utf-8") as f:
+        f.write("// 자동 생성 파일 (main.py) - 직접 수정하지 마세요.\n")
+        f.write("window.AVAILABLE_DATES = [\n")
+        f.write(",\n".join(f'  "{d}"' for d in dates))
+        f.write("\n];\n")
+    print(f"🗓️  [대시보드 날짜 목록 갱신] reports/available_dates.js ({len(dates)}개 일자, 최신: {dates[-1] if dates else '-'})")
+    return dates
+
 def load_env_file():
     """
     프로젝트 루트의 .env 파일이 존재하는 경우 환경 변수를 읽어오도록 지원하는 보조 함수
@@ -549,6 +569,9 @@ def main():
         if args.pdf:
             extra.extend(["--pdf"])
         run_step(5, "AI 추세추종 분석 리포트(MD 및 PDF) 생성", "getEtfAiReport.py", extra)
+
+    # 🗓️ 대시보드 달력/기본 일자용 날짜 목록 자동 갱신
+    update_available_dates_js()
 
     telegram_status_msg = "미실행 (옵션 --telegram 미사용)"
     git_status_msg = "미실행 (옵션 --push-git 미사용)"

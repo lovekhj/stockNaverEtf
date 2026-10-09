@@ -15,10 +15,8 @@ function getTodayDateStr() {
 
 let allStockData = [];
 let filteredStockData = [];
-let availableDates = [
-  "20260918", "20260921", "20260922", "20260923", "20260924",
-  "20260925", "20260928", "20260929", "20260930", "20261001", "20261002", "20261006", "20261007"
-];
+// 리포트 날짜 목록: main.py 실행 시 자동 생성되는 reports/available_dates.js (window.AVAILABLE_DATES)
+let availableDates = Array.isArray(window.AVAILABLE_DATES) ? [...window.AVAILABLE_DATES] : [];
 let sortedAvailableDates = [...availableDates].sort((a, b) => b.localeCompare(a));
 let currentDate = getTodayDateStr();
 let stockHistoryCache = {}; // { dateStr: { code: gradeStr } }
@@ -31,10 +29,14 @@ const CANDLE_TYPES = [
   { id: "십자형", label: "🟡 ⚖️ 십자형 (힘겨루기)" }
 ];
 
-// Filter States - Defaults: 전체 (ALL)
-let currentGradeFilter = "ALL";
-let currentCandleFilter = "ALL";
-let currentOverheatFilter = "ALL";
+// Filter States - Defaults: A등급 + 망치형/아래꼬리 + 적정
+const DEFAULT_GRADE_FILTER = "A";
+const DEFAULT_CANDLE_FILTER = ["망치형", "아래꼬리"];
+const DEFAULT_OVERHEAT_FILTER = "적정";
+
+let currentGradeFilter = DEFAULT_GRADE_FILTER;
+let currentCandleFilter = [...DEFAULT_CANDLE_FILTER];
+let currentOverheatFilter = DEFAULT_OVERHEAT_FILTER;
 let currentSectorFilter = "ALL";
 let currentAlignFilter = "ALL";
 let currentSearchQuery = "";
@@ -49,11 +51,9 @@ let sortAsc = true;
 
 // Initialize Dashboard App
 document.addEventListener("DOMContentLoaded", () => {
-  initThemeToggle();
-  
   const todayStr = getTodayDateStr();
   const sortedDates = [...availableDates].sort((a, b) => b.localeCompare(a));
-  const latestVerified = sortedDates[0] || "20261007";
+  const latestVerified = sortedDates[0] || todayStr;
 
   // 오늘 날짜 데이터가 알려진 목록에 있으면 사용, 그렇지 않으면 최신 유효 일자 선택
   if (availableDates.includes(todayStr)) {
@@ -122,41 +122,6 @@ function handleDatePickerChange(dateVal) {
   if (reportView && reportView.classList.contains("active")) {
     selectDateReport(dateStr);
   }
-}
-
-/**
- * 1. 테마 토글 (다크 / 라이트 모드)
- */
-function initThemeToggle() {
-  const btn = document.getElementById("themeToggleBtn");
-  const body = document.body;
-  
-  // 저장된 테마 불러오기 (기본값: light)
-  const savedTheme = localStorage.getItem("dashboard_theme") || "light";
-  if (savedTheme === "dark") {
-    body.classList.add("dark-theme");
-    body.classList.remove("light-theme");
-    if (btn) btn.innerHTML = '<i class="fa-solid fa-moon"></i>';
-  } else {
-    body.classList.add("light-theme");
-    body.classList.remove("dark-theme");
-    if (btn) btn.innerHTML = '<i class="fa-solid fa-sun"></i>';
-  }
-
-  if (!btn) return;
-  btn.addEventListener("click", () => {
-    if (body.classList.contains("light-theme")) {
-      body.classList.remove("light-theme");
-      body.classList.add("dark-theme");
-      btn.innerHTML = '<i class="fa-solid fa-moon"></i>';
-      localStorage.setItem("dashboard_theme", "dark");
-    } else {
-      body.classList.remove("dark-theme");
-      body.classList.add("light-theme");
-      btn.innerHTML = '<i class="fa-solid fa-sun"></i>';
-      localStorage.setItem("dashboard_theme", "light");
-    }
-  });
 }
 
 /**
@@ -530,7 +495,6 @@ function loadDashboardData(dateStr, isInitialLoad = false) {
             renderSectorGrid();
             renderHighlights();
             populateSectorSelectFilter();
-            updateFilterCounts();
             applyFiltersAndRenderTable();
             renderCalendarGrid();
           } else {
@@ -588,14 +552,25 @@ function renderKPIs() {
   if (elQA) elQA.innerText = aList.length;
   const elQUp = document.getElementById("quickCountUpgraded");
   if (elQUp) elQUp.innerText = upgradedList.length;
-  
+
+  updateFilterCounts();
+}
+
+/**
+ * 4-1. 필터 콤보박스(등급 / 캔들 / 과열) 옵션별 실시간 개수 갱신
+ */
+function updateFilterCounts() {
+  const total = allStockData.length;
+  const aplusList = allStockData.filter(d => d.투자등급 === "A+");
+  const aList = allStockData.filter(d => d.투자등급 === "A");
+
   // Update Grade Select Combobox Options with Live Counts
   const bList = allStockData.filter(d => d.투자등급 === "B");
   const cList = allStockData.filter(d => d.투자등급 === "C");
 
   const gradeSelect = document.getElementById("gradeSelectFilter");
   if (gradeSelect) {
-    const curVal = gradeSelect.value || currentGradeFilter;
+    const curVal = currentGradeFilter;
     gradeSelect.innerHTML = `
       <option value="ALL">전체 보기 (${total.toLocaleString()}개)</option>
       <option value="A+">🔥 A+ 최상위주 (${aplusList.length.toLocaleString()}개)</option>
@@ -661,7 +636,7 @@ function renderKPIs() {
     const shortOverheatCount = allStockData.filter(d => (d.과열여부 || "").includes("단기과열")).length;
     const gapOverheatCount = allStockData.filter(d => (d.과열여부 || "").includes("이격과도")).length;
 
-    const curOverheatVal = overheatSelect.value || currentOverheatFilter;
+    const curOverheatVal = currentOverheatFilter;
     overheatSelect.innerHTML = `
       <option value="ALL">전체 과열 판정 (${total.toLocaleString()}개)</option>
       <option value="적정">🟢 적정 (안전) (${normalCount.toLocaleString()}개)</option>
@@ -1212,20 +1187,14 @@ function executeSearchQuery() {
 }
 
 function goHome() {
-  currentGradeFilter = "ALL";
-  currentCandleFilter = "ALL";
-  currentOverheatFilter = "ALL";
+  currentGradeFilter = DEFAULT_GRADE_FILTER;
+  currentCandleFilter = [...DEFAULT_CANDLE_FILTER];
+  currentOverheatFilter = DEFAULT_OVERHEAT_FILTER;
   currentSearchQuery = "";
   currentPage = 1;
 
   const searchInput = document.getElementById("searchInput");
   if (searchInput) searchInput.value = "";
-
-  const gradeSelect = document.getElementById("gradeSelectFilter");
-  if (gradeSelect) gradeSelect.value = "ALL";
-
-  const overheatSelect = document.getElementById("overheatSelectFilter");
-  if (overheatSelect) overheatSelect.value = "ALL";
 
   switchView('dashboard');
   updateFilterCounts();

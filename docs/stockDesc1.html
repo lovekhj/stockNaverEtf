@@ -18,9 +18,9 @@
 
   <style>
     :root {
-      --bg-dark: #0b0f19;
-      --panel-bg: rgba(17, 24, 39, 0.95);
-      --panel-border: rgba(255, 255, 255, 0.1);
+      --bg-dark: #f5f7fb;
+      --panel-bg: #ffffff;
+      --panel-border: #e5e9f0;
       --panel-border-glow: rgba(16, 185, 129, 0.35);
       --primary-emerald: #10b981;
       --primary-glow: rgba(16, 185, 129, 0.18);
@@ -31,8 +31,8 @@
       --info-blue: #3b82f6;
       --info-glow: rgba(59, 130, 246, 0.18);
       --purple-accent: #a855f7;
-      --text-main: #f8fafc;
-      --text-sub: #94a3b8;
+      --text-main: #0f172a;
+      --text-sub: #475569;
     }
 
     * {
@@ -57,20 +57,20 @@
       display: flex;
       flex-direction: column;
       gap: 2rem;
-      background: #0b0f19;
+      background: #ffffff;
       padding: 1.5rem;
+      border: 1px solid #e5e9f0;
       border-radius: 24px;
-      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
     }
 
     /* Header Banner Card */
     .hero-banner {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(15, 23, 42, 0.95) 60%, rgba(245, 158, 11, 0.12) 100%);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.10) 0%, #ffffff 60%, rgba(245, 158, 11, 0.08) 100%);
       border: 1px solid var(--panel-border-glow);
       border-radius: 20px;
       padding: 2.5rem;
-      backdrop-filter: blur(16px);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
       position: relative;
       overflow: hidden;
     }
@@ -93,13 +93,13 @@
 
     .chip-emerald {
       background: rgba(16, 185, 129, 0.2);
-      color: var(--primary-emerald);
+      color: #047857;
       border: 1px solid rgba(16, 185, 129, 0.4);
     }
 
     .chip-gold {
       background: rgba(245, 158, 11, 0.2);
-      color: var(--gold-accent);
+      color: #b45309;
       border: 1px solid rgba(245, 158, 11, 0.4);
     }
 
@@ -109,13 +109,11 @@
       font-weight: 800;
       line-height: 1.25;
       margin-bottom: 1rem;
-      background: linear-gradient(90deg, #ffffff 0%, #cbd5e1 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+      color: #0f172a;
     }
 
     .hero-desc {
-      color: #94a3b8;
+      color: #475569;
       font-size: 1.05rem;
       max-width: 820px;
     }
@@ -142,12 +140,12 @@
 
     .rule-card.danger {
       border-left: 4px solid var(--danger-red);
-      background: linear-gradient(135deg, var(--danger-glow) 0%, rgba(17, 24, 39, 0.95) 100%);
+      background: linear-gradient(135deg, #fef2f2 0%, #ffffff 100%);
     }
 
     .rule-card.success {
       border-left: 4px solid var(--primary-emerald);
-      background: linear-gradient(135deg, var(--primary-glow) 0%, rgba(17, 24, 39, 0.95) 100%);
+      background: linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%);
     }
 
     .rule-icon {
@@ -166,12 +164,12 @@
     .rule-title {
       font-size: 1.2rem;
       font-weight: 700;
-      color: #ffffff;
+      color: #0f172a;
       margin-bottom: 0.6rem;
     }
 
     .rule-text {
-      color: #cbd5e1;
+      color: #475569;
       font-size: 0.95rem;
       line-height: 1.6;
     }
@@ -188,7 +186,7 @@
       font-family: 'Outfit', sans-serif;
       font-size: 1.35rem;
       font-weight: 700;
-      color: #ffffff;
+      color: #0f172a;
       margin-bottom: 1.5rem;
       display: flex;
       align-items: center;
@@ -212,7 +210,7 @@
       padding: 0 1.2rem;
       font-weight: 700;
       font-size: 0.95rem;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.1);
     }
 
     .level-4 {
@@ -247,8 +245,7 @@
       border: 1px solid var(--panel-border-glow);
       border-radius: 22px;
       padding: 2.2rem;
-      backdrop-filter: blur(16px);
-      box-shadow: 0 12px 35px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
     }
 
     .flow-tree {
@@ -268,7 +265,7 @@
       display: flex;
       align-items: center;
       gap: 0.8rem;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
       position: relative;
       text-align: center;
       transition: all 0.25s ease;
@@ -288,30 +285,30 @@
     }
 
     .node-decision {
-      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
       border: 2px solid var(--gold-accent);
-      color: #fde047;
+      color: #92400e;
       border-radius: 16px;
       padding: 1.1rem 2rem;
       box-shadow: 0 0 15px rgba(245, 158, 11, 0.2);
     }
 
     .node-action {
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(15, 23, 42, 0.9) 100%);
+      background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
       border: 1px solid var(--primary-emerald);
-      color: #6ee7b7;
+      color: #047857;
     }
 
     .node-stop {
-      background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(15, 23, 42, 0.9) 100%);
+      background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
       border: 1px solid var(--danger-red);
-      color: #fca5a5;
+      color: #b91c1c;
     }
 
     .node-win {
-      background: linear-gradient(135deg, rgba(245, 158, 11, 0.25) 0%, rgba(16, 185, 129, 0.25) 100%);
+      background: linear-gradient(135deg, #fffbeb 0%, #dcfce7 100%);
       border: 1.5px solid var(--gold-accent);
-      color: #fef08a;
+      color: #854d0e;
       box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
     }
 
@@ -328,7 +325,7 @@
     .flow-line {
       width: 2px;
       height: 20px;
-      background: linear-gradient(180deg, var(--panel-border-glow), #475569);
+      background: linear-gradient(180deg, var(--panel-border-glow), #cbd5e1);
     }
 
     /* Branch Rows (Yes/No Split) */
@@ -348,8 +345,8 @@
       flex: 1;
       min-width: 280px;
       max-width: 440px;
-      background: rgba(15, 23, 42, 0.5);
-      border: 1px dashed rgba(255, 255, 255, 0.12);
+      background: #f8fafc;
+      border: 1px dashed #cbd5e1;
       border-radius: 18px;
       padding: 1.2rem;
     }
@@ -362,8 +359,8 @@
       text-transform: uppercase;
     }
 
-    .bb-pass { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #10b981; }
-    .bb-fail { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; }
+    .bb-pass { background: rgba(16, 185, 129, 0.12); color: #047857; border: 1px solid #10b981; }
+    .bb-fail { background: rgba(239, 68, 68, 0.12); color: #b91c1c; border: 1px solid #ef4444; }
 
     /* Timeline Steps */
     .steps-container {
@@ -424,8 +421,9 @@
       font-weight: 700;
       padding: 0.25rem 0.65rem;
       border-radius: 6px;
-      background: rgba(100, 116, 139, 0.15);
+      background: #f1f5f9;
       color: var(--text-main);
+      border: 1px solid #e2e8f0;
     }
 
     .step-desc {
@@ -448,19 +446,19 @@
     .hb-emerald {
       background: rgba(16, 185, 129, 0.1);
       border: 1px solid rgba(16, 185, 129, 0.3);
-      color: #6ee7b7;
+      color: #047857;
     }
 
     .hb-red {
       background: rgba(239, 68, 68, 0.1);
       border: 1px solid rgba(239, 68, 68, 0.3);
-      color: #fca5a5;
+      color: #b91c1c;
     }
 
     .hb-gold {
       background: rgba(245, 158, 11, 0.1);
       border: 1px solid rgba(245, 158, 11, 0.3);
-      color: #fde047;
+      color: #b45309;
     }
 
     /* Tables */
@@ -480,8 +478,8 @@
 
     .custom-table th {
       padding: 0.9rem 1.1rem;
-      background: rgba(30, 41, 59, 0.8);
-      color: #94a3b8;
+      background: #f1f5f9;
+      color: #0f172a;
       font-size: 0.85rem;
       text-transform: uppercase;
       letter-spacing: 0.5px;
@@ -490,9 +488,9 @@
 
     .custom-table td {
       padding: 1rem 1.1rem;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid #eef2f7;
       font-size: 0.92rem;
-      color: #e2e8f0;
+      color: #1e293b;
     }
 
     .grade-badge {
@@ -504,26 +502,26 @@
     }
 
     .gb-aplus {
-      background: rgba(16, 185, 129, 0.2);
-      color: #34d399;
+      background: rgba(16, 185, 129, 0.15);
+      color: #047857;
       border: 1px solid #10b981;
     }
 
     .gb-a {
-      background: rgba(59, 130, 246, 0.2);
-      color: #60a5fa;
+      background: rgba(59, 130, 246, 0.15);
+      color: #1d4ed8;
       border: 1px solid #3b82f6;
     }
 
     .gb-b {
-      background: rgba(245, 158, 11, 0.2);
-      color: #fbbf24;
+      background: rgba(245, 158, 11, 0.15);
+      color: #b45309;
       border: 1px solid #f59e0b;
     }
 
     .gb-c {
-      background: rgba(239, 68, 68, 0.2);
-      color: #f87171;
+      background: rgba(239, 68, 68, 0.15);
+      color: #b91c1c;
       border: 1px solid #ef4444;
     }
 
