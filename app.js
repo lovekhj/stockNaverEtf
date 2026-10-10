@@ -38,7 +38,7 @@ let currentSignalFilter = DEFAULT_SIGNAL_FILTER;
 let currentCandleFilter = [...DEFAULT_CANDLE_FILTER];
 let currentSearchQuery = "";
 let selectedSector = null; // 섹터별 종목조회 화면에서 고른 섹터
-let lastListView = "sector"; // 종목 상세나 날짜 선택 뒤에 돌아갈 목록 화면 (sector, leaders, dashboard, virtual)
+let lastListView = "sector"; // 종목 상세나 날짜 선택 뒤에 돌아갈 목록 화면 (sector, leaders, journal, dashboard, virtual)
 let virtualTrades = [];      // 가상 주식거래 장부 (reports/virtual_trades.csv) 전체
 let selectedVirtualCode = null; // 가상 주식거래 화면에서 일별 기록을 보려고 고른 종목
 
@@ -196,6 +196,7 @@ function renderCalendarGrid() {
 function onCalendarDayClick(dateStr) {
   currentDate = dateStr;
   renderVirtualView();
+  renderJournalView();
   switchView(lastListView);
   loadDashboardData(dateStr);
   renderCalendarGrid();
@@ -285,6 +286,7 @@ function renderEmptyDashboard(dateStr) {
   updateFilterCounts();
   renderSectorView();
   renderLeadersView();
+  renderJournalView();
 
   const tbody = document.getElementById("tableBody");
   if (tbody) {
@@ -368,6 +370,7 @@ function loadDashboardData(dateStr) {
             applyFiltersAndRenderTable();
             renderSectorView();
             renderLeadersView();
+            renderJournalView();
             renderCalendarGrid();
           } else {
             renderEmptyDashboard(dateStr);
@@ -621,6 +624,144 @@ function renderLeadersView() {
 }
 
 /**
+ * 6-1b. 하루 일지: 기준일에 무엇이 어떻게 움직였는지를 리포트 CSV 의 숫자로 적는다 (이유는 적지 않는다)
+ */
+function renderJournalView() {
+  const sectorBody = document.getElementById("journalSectorBody");
+  if (!sectorBody) return;
+
+  const dateLabel = `${currentDate.slice(0, 4)}-${currentDate.slice(4, 6)}-${currentDate.slice(6, 8)}`;
+  document.getElementById("journalDateText").innerText = `(${dateLabel})`;
+  const setText = (id, text, colorValue) => {
+    const el = document.getElementById(id);
+    el.innerText = text;
+    el.style.color = colorValue === undefined ? "" : percentColor(colorValue);
+  };
+  const emptyRow = (cols, text) => `<tr><td colspan="${cols}" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">${text}</td></tr>`;
+
+  // 기준일에 거래가 있었던 종목만 센다 (추세통과 열이 "-" 인 종목은 그날 일봉이 없다)
+  const rows = allStockData.filter(d => d.추세통과 === "O" || d.추세통과 === "X").map(d => ({ ...d, chg: parsePercent(d.등락률) || 0 }));
+  if (rows.length === 0) {
+    ["journalUpDown", "journalFlat", "journalAvgChange", "journalMedianChange", "journalPassCount", "journalPassDiff", "journalStrong"].forEach(id => setText(id, "-"));
+    sectorBody.innerHTML = emptyRow(7, "이 날짜의 리포트에는 일지에 쓸 통계가 없습니다.");
+    ["journalGainersBody", "journalLosersBody"].forEach(id => { document.getElementById(id).innerHTML = emptyRow(10, "-"); });
+    document.getElementById("journalPassChangeBody").innerHTML = emptyRow(2, "-");
+    renderJournalVirtual();
+    return;
+  }
+
+  // 1. 시장 한 줄
+  const up = rows.filter(d => d.chg > 0).length;
+  const down = rows.filter(d => d.chg < 0).length;
+  const sortedChg = rows.map(d => d.chg).sort((a, b) => a - b);
+  const avg = sortedChg.reduce((sum, v) => sum + v, 0) / rows.length;
+  const mid = Math.floor(rows.length / 2);
+  const med = rows.length % 2 ? sortedChg[mid] : (sortedChg[mid - 1] + sortedChg[mid]) / 2;
+  const passNow = rows.filter(d => d.추세통과 === "O");
+  const hasPrev = rows.some(d => d.전일통과 === "O" || d.전일통과 === "X");
+  const passPrevCount = rows.filter(d => d.전일통과 === "O").length;
+  const signed = n => `${n > 0 ? "+" : ""}${n}`;
+
+  setText("journalUpDown", `${up} / ${down}`);
+  setText("journalFlat", `보합 ${rows.length - up - down}개 · 전체 ${rows.length}개`);
+  setText("journalAvgChange", formatSignedPercent(avg), avg);
+  setText("journalMedianChange", `중앙값 ${formatSignedPercent(med)}`);
+  setText("journalPassCount", `${passNow.length}개`);
+  setText("journalPassDiff", hasPrev ? `전일 ${passPrevCount}개 (${signed(passNow.length - passPrevCount)})` : "전일 값 없음");
+  setText("journalStrong", `${rows.filter(d => d.강한마감 === "O").length}개 / ${rows.filter(d => (d.매수신호 || "").startsWith("A")).length}개`);
+
+  // 2. 섹터 표
+  const sectors = {};
+  rows.forEach(d => { (sectors[d.섹터] = sectors[d.섹터] || []).push(d); });
+  const nameWithChange = d => `${d.종목명} <strong style="color: ${percentColor(d.chg)};">${d.등락률}</strong>`;
+  sectorBody.innerHTML = "";
+  Object.entries(sectors)
+    .map(([name, list]) => ({ name, list, avg: list.reduce((sum, d) => sum + d.chg, 0) / list.length }))
+    .sort((a, b) => b.avg - a.avg)
+    .forEach(sec => {
+      const byChange = [...sec.list].sort((a, b) => b.chg - a.chg);
+      const pass = sec.list.filter(d => d.추세통과 === "O").length;
+      const passDiff = pass - sec.list.filter(d => d.전일통과 === "O").length;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><strong>${sec.name}</strong> <span style="color: var(--text-dim);">${sec.list.length}</span></td>
+        <td><strong style="color: ${percentColor(sec.avg)};">${formatSignedPercent(sec.avg)}</strong></td>
+        <td>${sec.list.filter(d => d.chg > 0).length} / ${sec.list.filter(d => d.chg < 0).length}</td>
+        <td>${sec.list.filter(d => d.강한마감 === "O").length || "-"}</td>
+        <td>${pass}${hasPrev ? ` <span style="color: ${percentColor(passDiff)};">(${signed(passDiff)})</span>` : ""}</td>
+        <td>${nameWithChange(byChange[0])}</td>
+        <td>${nameWithChange(byChange[byChange.length - 1])}</td>
+      `;
+      sectorBody.appendChild(tr);
+    });
+
+  // 3. 크게 움직인 종목
+  const moverRow = d => {
+    const buySignal = d.매수신호 || "-";
+    const signalClass = { "A": "signal-buy", "B": "signal-review", "C": "signal-avoid" }[buySignal.charAt(0)] || "signal-none";
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><strong class="stock-name-clickable" onclick="openStockDetail('${d.종목코드}')">${d.종목명}</strong></td>
+      <td>${d.시장 || "-"}</td>
+      <td><span class="stock-sector-tag">${d.섹터}</span></td>
+      <td><strong style="color: ${percentColor(d.chg)};">${d.등락률}</strong></td>
+      <td>${d.거래량배수 && d.거래량배수 !== "-" ? `${d.거래량배수}배` : "-"}</td>
+      <td>${d.추세통과 === "O" ? "🟢 O" : "🔴 X"}</td>
+      <td><strong style="color: ${percentColor(parsePercent(d["3개월수익률"]))};">${d["3개월수익률"] || "-"}</strong></td>
+      <td>${d.고점대비 || "-"}</td>
+      <td>${d.차트꼬리 || "-"}</td>
+      <td><span class="badge-signal ${signalClass}">${buySignal}</span></td>
+    `;
+    return tr;
+  };
+  const byChangeAll = [...rows].sort((a, b) => b.chg - a.chg);
+  const fill = (id, list) => { const body = document.getElementById(id); body.innerHTML = ""; list.forEach(d => body.appendChild(moverRow(d))); };
+  fill("journalGainersBody", byChangeAll.slice(0, 10));
+  fill("journalLosersBody", byChangeAll.slice(-10).reverse());
+
+  // 4. 추세 통과 목록의 변화
+  const changeBody = document.getElementById("journalPassChangeBody");
+  if (!hasPrev) {
+    changeBody.innerHTML = emptyRow(2, "이 날짜의 리포트에는 전일 통과 값이 없습니다.");
+  } else {
+    const listText = list => list.length
+      ? list.sort((a, b) => b.chg - a.chg).map(d => `${d.종목명} <span style="color: var(--text-dim);">(${d.섹터}, </span><span style="color: ${percentColor(d.chg)};">${d.등락률}</span><span style="color: var(--text-dim);">)</span>`).join(", ")
+      : "없음";
+    const entered = rows.filter(d => d.추세통과 === "O" && d.전일통과 === "X");
+    const left = rows.filter(d => d.추세통과 === "X" && d.전일통과 === "O");
+    changeBody.innerHTML = `
+      <tr><td><strong>새로 통과</strong> ${entered.length}개</td><td>${listText(entered)}</td></tr>
+      <tr><td><strong>통과에서 빠짐</strong> ${left.length}개</td><td>${listText(left)}</td></tr>
+    `;
+  }
+
+  renderJournalVirtual();
+}
+
+function renderJournalVirtual() {
+  const body = document.getElementById("journalVirtualBody");
+  const rows = virtualTrades.filter(row => row.날짜 === currentDate);
+  if (rows.length === 0) {
+    body.innerHTML = `<tr><td colspan="2" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">이 날짜의 가상 거래 기록이 없습니다.</td></tr>`;
+    return;
+  }
+  const num = text => Number(text) || 0;
+  const names = status => {
+    const list = rows.filter(row => row.상태 === status);
+    return list.length ? list.map(row => status === "매수" ? row.종목명 : `${row.종목명} <span style="color: ${percentColor(parsePercent(row.수익률))};">${row.수익률}</span>`).join(", ") : "없음";
+  };
+  const holding = rows.filter(row => row.상태 !== "매도");
+  const cost = holding.reduce((sum, row) => sum + num(row.매수가) * num(row.수량), 0);
+  const value = holding.reduce((sum, row) => sum + num(row.평가금액), 0);
+  const realized = virtualTrades.filter(row => row.상태 === "매도" && row.날짜 <= currentDate).reduce((sum, row) => sum + num(row.손익), 0);
+  body.innerHTML = `
+    <tr><td><strong>오늘 매수</strong> ${rows.filter(row => row.상태 === "매수").length}건</td><td>${names("매수")}</td></tr>
+    <tr><td><strong>오늘 매도</strong> ${rows.filter(row => row.상태 === "매도").length}건</td><td>${names("매도")}</td></tr>
+    <tr><td><strong>보유</strong> ${holding.length}종목</td><td>원금 ${formatWon(cost)} · 평가손익 <strong style="color: ${percentColor(value - cost)};">${formatSignedWon(value - cost)}</strong> · 누적 실현손익 <strong style="color: ${percentColor(realized)};">${formatSignedWon(realized)}</strong></td></tr>
+  `;
+}
+
+/**
  * 6-2. 가상 주식거래 리포트: virtualTrade.py 가 쌓는 장부(reports/virtual_trades.csv)를 날짜별로 보여 준다
  */
 function loadVirtualTrades() {
@@ -633,6 +774,7 @@ function loadVirtualTrades() {
         complete: results => {
           virtualTrades = (results.data || []).filter(row => row.날짜 && row.종목코드);
           renderVirtualView();
+          renderJournalView();
         }
       });
     })
@@ -1005,7 +1147,7 @@ window.addEventListener("popstate", (e) => {
 function switchView(viewName) {
   document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-  if (['dashboard', 'sector', 'leaders', 'virtual'].includes(viewName)) lastListView = viewName;
+  if (['dashboard', 'sector', 'leaders', 'journal', 'virtual'].includes(viewName)) lastListView = viewName;
 
   if (viewName === 'dashboard') {
     document.getElementById("viewDashboard").classList.add("active");
@@ -1016,6 +1158,10 @@ function switchView(viewName) {
   } else if (viewName === 'leaders') {
     document.getElementById("viewLeaders").classList.add("active");
     document.getElementById("navBtnLeaders").classList.add("active");
+  } else if (viewName === 'journal') {
+    document.getElementById("viewJournal").classList.add("active");
+    document.getElementById("navBtnJournal").classList.add("active");
+    renderJournalView();
   } else if (viewName === 'virtual') {
     document.getElementById("viewVirtual").classList.add("active");
     document.getElementById("navBtnVirtual").classList.add("active");

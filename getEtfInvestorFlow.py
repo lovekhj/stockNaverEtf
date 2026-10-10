@@ -47,7 +47,7 @@ CANDLE_LONG_BODY = 0.7      # 장대봉: 몸통 비율 하한
 
 FIELDNAMES = [
     "종목코드", "종목명", "시장", "섹터", "매수신호", "매수신호사유", "등락률", "현재가",
-    "20일이격도", "차트꼬리", "추세통과", "3개월수익률", "고점대비", "강한마감",
+    "20일이격도", "차트꼬리", "추세통과", "전일통과", "3개월수익률", "고점대비", "강한마감", "거래량배수",
     "MA5", "MA20", "MA60", "MA120", "상세페이지"
 ]
 
@@ -168,21 +168,27 @@ def load_stock_sectors(path=SECTOR_CSV):
 
 def judge_sector_columns(bars, target_date):
     """
-    섹터별 종목조회 화면에 쓰는 열(추세통과, 3개월수익률, 고점대비, 강한마감)을 돌려줍니다.
+    섹터 순위·주도주·하루 일지 화면에 쓰는 열을 돌려줍니다.
+    (추세통과, 전일통과, 3개월수익률, 고점대비, 강한마감, 거래량배수)
+    전일통과는 하루 전 시점의 추세 통과 여부로, 통과 목록에 새로 들어오거나 빠진 종목을 가리는 데 씁니다.
     기준일자 일봉이 없거나 일봉이 모자라면 모두 "-" 입니다.
     """
-    empty = {"추세통과": "-", "3개월수익률": "-", "고점대비": "-", "강한마감": "-"}
+    empty = {"추세통과": "-", "전일통과": "-", "3개월수익률": "-", "고점대비": "-", "강한마감": "-", "거래량배수": "-"}
     closes = [b[4] for b in bars]
     volumes = [b[5] for b in bars]
     trend = judge_trend(closes) if bars[-1][0] == target_date else None
     if trend is None or volumes[-1] == 0:
         return empty
     passed, ret_3m, from_high = trend
+    prev_trend = judge_trend(closes[:-1])
+    change, volume_ratio = measure_last_bar(closes, volumes)
     return {
         "추세통과": "O" if passed else "X",
+        "전일통과": "-" if prev_trend is None else ("O" if prev_trend[0] else "X"),
         "3개월수익률": f"{ret_3m * 100:+.1f}%",
         "고점대비": f"{from_high * 100:+.1f}%",
-        "강한마감": "O" if is_strong_close(*measure_last_bar(closes, volumes)) else "X",
+        "강한마감": "O" if is_strong_close(change, volume_ratio) else "X",
+        "거래량배수": f"{volume_ratio:.1f}",
     }
 
 def main():

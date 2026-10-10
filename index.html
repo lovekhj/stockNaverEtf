@@ -62,6 +62,10 @@
               <i class="fa-solid fa-crown"></i>
               <span>주도주</span>
             </button>
+            <button class="nav-btn" id="navBtnJournal" onclick="switchView('journal')">
+              <i class="fa-solid fa-book-open"></i>
+              <span>하루 일지</span>
+            </button>
             <button class="nav-btn" id="navBtnMain" onclick="switchView('dashboard')">
               <i class="fa-solid fa-magnifying-glass"></i>
               <span>전체 종목 검색</span>
@@ -482,6 +486,156 @@
                     <td><strong id="detailMa120">0원</strong></td>
                   </tr>
                 </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- View: 하루 일지 (기준일에 무엇이 어떻게 움직였는지) -->
+        <section id="viewJournal" class="view-panel">
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-book-open"></i> 하루 일지 <span id="journalDateText"></span></h2>
+                <p class="section-desc">
+                  기준일에 무엇이 어떻게 움직였는지를 매일 같은 숫자로 적습니다. 왜 움직였는지(뉴스, 재료)는 여기에 없으며 직접 판단할 부분입니다.<br>
+                  네이버 증권 일봉(수정주가), 장 마감 후 확정치. 대상은 ETF 상위 구성종목이며 시장 전체가 아닙니다. 매수 추천이 아닙니다.
+                </p>
+              </div>
+            </div>
+
+            <div class="kpi-grid">
+              <div class="kpi-card card-total">
+                <div class="kpi-icon"><i class="fa-solid fa-arrows-up-down"></i></div>
+                <div class="kpi-info">
+                  <span class="kpi-label">오른 종목 / 내린 종목</span>
+                  <span class="kpi-value" id="journalUpDown">-</span>
+                  <span class="kpi-sub" id="journalFlat">-</span>
+                </div>
+              </div>
+              <div class="kpi-card card-dual">
+                <div class="kpi-icon"><i class="fa-solid fa-percent"></i></div>
+                <div class="kpi-info">
+                  <span class="kpi-label">평균 등락률</span>
+                  <span class="kpi-value" id="journalAvgChange">-</span>
+                  <span class="kpi-sub" id="journalMedianChange">-</span>
+                </div>
+              </div>
+              <div class="kpi-card card-aplus">
+                <div class="kpi-icon"><i class="fa-solid fa-arrow-trend-up"></i></div>
+                <div class="kpi-info">
+                  <span class="kpi-label">추세 통과 종목</span>
+                  <span class="kpi-value" id="journalPassCount">-</span>
+                  <span class="kpi-sub" id="journalPassDiff">-</span>
+                </div>
+              </div>
+              <div class="kpi-card card-a">
+                <div class="kpi-icon"><i class="fa-solid fa-bullseye"></i></div>
+                <div class="kpi-info">
+                  <span class="kpi-label">강한 마감 / 매수신호 A</span>
+                  <span class="kpi-value" id="journalStrong">-</span>
+                  <span class="kpi-sub">강한 마감 = +3% 이상, 거래량 1.5배 이상</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-industry"></i> 섹터별 움직임</h2>
+                <p class="section-desc">평균 등락률이 높은 순서입니다. 통과 옆 괄호는 전일 대비 늘거나 준 종목 수입니다.</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table rules-table">
+                <thead>
+                  <tr>
+                    <th>섹터</th>
+                    <th>평균 등락률</th>
+                    <th>오른 / 내린</th>
+                    <th>강한 마감</th>
+                    <th>통과 (전일 대비)</th>
+                    <th>가장 많이 오른 종목</th>
+                    <th>가장 많이 내린 종목</th>
+                  </tr>
+                </thead>
+                <tbody id="journalSectorBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-arrow-up-wide-short"></i> 크게 오른 종목 (상위 10)</h2>
+                <p class="section-desc">같은 상승이라도 거래량이 붙었는지, 추세 통과 종목인지, 1년 고점에서 얼마나 떨어진 자리인지에 따라 다른 움직임입니다.</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>종목명</th><th>시장</th><th>섹터</th><th>등락률</th><th title="직전 20거래일 평균 거래량 대비">거래량</th>
+                    <th>통과</th><th>3개월</th><th>고점 대비</th><th>차트 꼬리</th><th>매수신호</th>
+                  </tr>
+                </thead>
+                <tbody id="journalGainersBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-arrow-down-wide-short"></i> 크게 내린 종목 (상위 10)</h2>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>종목명</th><th>시장</th><th>섹터</th><th>등락률</th><th title="직전 20거래일 평균 거래량 대비">거래량</th>
+                    <th>통과</th><th>3개월</th><th>고점 대비</th><th>차트 꼬리</th><th>매수신호</th>
+                  </tr>
+                </thead>
+                <tbody id="journalLosersBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-right-left"></i> 추세 통과 목록의 변화</h2>
+                <p class="section-desc">전일에는 통과가 아니었다가 오늘 통과한 종목과, 전일에는 통과였다가 오늘 빠진 종목입니다.</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table rules-table">
+                <thead>
+                  <tr><th>구분</th><th>종목 (섹터, 등락률)</th></tr>
+                </thead>
+                <tbody id="journalPassChangeBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-receipt"></i> 가상 거래</h2>
+                <p class="section-desc">자세한 내용은 가상 주식거래 리포트 메뉴에 있습니다. 가상 거래이며 실제 보유 종목이 아닙니다.</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table rules-table">
+                <thead>
+                  <tr><th>구분</th><th>내용</th></tr>
+                </thead>
+                <tbody id="journalVirtualBody"></tbody>
               </table>
             </div>
           </div>
