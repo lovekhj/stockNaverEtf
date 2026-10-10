@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>네이버 주식 ETF 주도주 수급 & 추세추종 대시보드</title>
-  <meta name="description" content="네이버 증권 API 기반 국내 ETF 상위 주도주 수급(외인/기관 쌍끌이) 및 이동평균선 정배열 추세 분석 대시보드">
+  <title>ETF 주도주 섹터 순위 & 추세추종 대시보드</title>
+  <meta name="description" content="네이버 증권 일봉 기반 국내 ETF 상위 구성종목의 섹터 순위, 주도주, 강한 마감 매수신호(검증 중인 후보 규칙) 대시보드">
   
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -17,11 +17,8 @@
   <!-- Custom CSS -->
   <link rel="stylesheet" href="style.css">
   
-  <!-- External CDN Libraries (PapaParse, Marked, Chart.js, Mermaid) -->
+  <!-- External CDN Library (PapaParse: 리포트 CSV 읽기) -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 </head>
 <body>
   <!-- App Container -->
@@ -29,13 +26,13 @@
     
     <!-- Top Header (GNB) -->
     <header class="gnb">
-      <div class="gnb-brand" onclick="goHome()" style="cursor: pointer;" title="초기 대시보드 화면으로 이동">
+      <div class="gnb-brand" onclick="goHome()" style="cursor: pointer;" title="첫 화면(섹터별 종목조회)으로 이동">
         <div class="brand-icon">
           <i class="fa-solid fa-chart-line-up"></i>
         </div>
         <div class="brand-text">
-          <h1 class="brand-title">ETF 주도주 <span class="highlight">수급</span></h1>
-          <p class="brand-sub">외국인/기관 쌍끌이 & 5/20/60/120일 이동평균선 추세추종</p>
+          <h1 class="brand-title">ETF 주도주 <span class="highlight">추세</span></h1>
+          <p class="brand-sub">섹터 순위 · 주도주 · 강한 마감 매수신호 (검증 중인 후보 규칙)</p>
         </div>
       </div>
       
@@ -57,17 +54,25 @@
         <div class="lnb-section">
           <h3 class="lnb-title"><i class="fa-solid fa-compass"></i> 대시보드</h3>
           <nav class="lnb-nav">
-            <button class="nav-btn active" id="navBtnMain" onclick="switchView('dashboard')">
-              <i class="fa-solid fa-house-signal"></i>
-              <span>통합 통계 대시보드</span>
+            <button class="nav-btn active" id="navBtnSector" onclick="switchView('sector')">
+              <i class="fa-solid fa-ranking-star"></i>
+              <span>섹터별 종목조회</span>
             </button>
-            <button class="nav-btn" id="navBtnStrategy" onclick="switchView('strategy')">
-              <i class="fa-solid fa-chess-knight"></i>
-              <span>추세추종전략</span>
+            <button class="nav-btn" id="navBtnLeaders" onclick="switchView('leaders')">
+              <i class="fa-solid fa-crown"></i>
+              <span>주도주</span>
             </button>
-            <button class="nav-btn" id="navBtnPriority" onclick="switchView('priorityStrategy')">
-              <i class="fa-solid fa-layer-group"></i>
-              <span>매수순위종목선택</span>
+            <button class="nav-btn" id="navBtnMain" onclick="switchView('dashboard')">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <span>전체 종목 검색</span>
+            </button>
+            <button class="nav-btn" id="navBtnVirtual" onclick="switchView('virtual')">
+              <i class="fa-solid fa-receipt"></i>
+              <span>가상 주식거래 리포트</span>
+            </button>
+            <button class="nav-btn" id="navBtnRules" onclick="switchView('rules')">
+              <i class="fa-solid fa-scale-balanced"></i>
+              <span>매매 규칙</span>
             </button>
           </nav>
         </div>
@@ -112,20 +117,8 @@
 
         <div class="lnb-footer">
           <div class="strategy-banner">
-            <div class="banner-title"><i class="fa-solid fa-shield-halved"></i> 추세추종 수칙</div>
-            <p>20일선 위 + 쌍끌이 수급 주도주 중심<br>손절선 -3% 엄수 / 피라미딩 분할매수</p>
-          </div>
-
-          <div class="strategy-banner guide-banner" style="margin-top: 0.75rem; background: #ffffff; border: 1px solid #e5e9f0; padding: 0.85rem; border-radius: 10px;">
-            <div class="banner-title" style="color: #b45309; font-size: 0.88rem; font-weight: 700; margin-bottom: 0.5rem;">
-              <i class="fa-solid fa-gauge-high"></i> 20일 이격도 & 과열 판정
-            </div>
-            <div style="font-size: 0.78rem; line-height: 1.5; color: #475569;">
-              <div style="margin-bottom: 0.35rem;"><strong style="color: #059669;">🟢 적정 (97~108%):</strong> 20일선 안심 1차 진입 적기</div>
-              <div style="margin-bottom: 0.35rem;"><strong style="color: #b45309;">🟡 상승과열 (108~115%):</strong> 추격 자제 / 본전 스탑로스</div>
-              <div style="margin-bottom: 0.35rem;"><strong style="color: #dc2626;">🔴 단기과열 (115% 이상):</strong> 🚨 <strong>추매 및 불타기 금지!</strong></div>
-              <div><strong style="color: #4f46e5;">🔵 이격과도 (&lt;97%):</strong> 20일선 이탈 / 관망</div>
-            </div>
+            <div class="banner-title"><i class="fa-solid fa-shield-halved"></i> 후보 규칙 (검증 중)</div>
+            <p>매수: 추세 통과 + 강한 마감인 날 종가<br>매도: 종가가 최고 종가 -5% 이하면 전량</p>
           </div>
 
           <!-- Candle Shape & Tail Strategy Banner -->
@@ -146,15 +139,15 @@
       <!-- Main Content Area -->
       <main class="main-content">
         
-        <!-- View 1: Main Dashboard -->
-        <section id="viewDashboard" class="view-panel active">
+        <!-- View 1: 전체 종목 검색 -->
+        <section id="viewDashboard" class="view-panel">
           
           <!-- Full Data Table Section -->
           <div class="section-card">
             <div class="section-header table-header-flex">
               <div>
-                <h2><i class="fa-solid fa-table-list"></i> 전체 주도주 수급 & 추세 분석 테이블</h2>
-                <p class="section-desc">조건별 필터링 및 네이버 증권 시세 바로가기 제공</p>
+                <h2><i class="fa-solid fa-magnifying-glass"></i> 전체 종목 검색</h2>
+                <p class="section-desc">섹터와 관계없이 종목명·코드로 찾거나 매수신호로 걸러 봅니다. 네이버 증권 일봉(수정주가), 기준일 장 마감 확정치</p>
               </div>
             </div>
             
@@ -162,17 +155,8 @@
             <div class="table-toolbar" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between; background: rgba(0, 0, 0, 0.03); padding: 0.85rem 1rem; border-radius: 12px; margin-bottom: 1rem;">
               <div class="filter-controls-group" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; width: 100%;">
                 
-                <!-- 1. Grade Filter Combobox -->
-                <select id="gradeSelectFilter" class="grade-combobox-select" onchange="handleGradeSelectChange()">
-                  <option value="ALL" selected>전체 보기 (0개)</option>
-                  <option value="A+">🔥 A+ 최상위주 (0개)</option>
-                  <option value="A">⭐ A 우량 수급주 (0개)</option>
-                  <option value="B">🟡 B 일반 수급주 (0개)</option>
-                  <option value="C">⚪ C 미달/관망주 (0개)</option>
-                </select>
-
                 <!-- 1-2. Buy Signal (매수신호) Filter Combobox -->
-                <select id="signalSelectFilter" class="grade-combobox-select" onchange="handleSignalSelectChange()" title="강한 마감 + 정배열 후보 규칙. 기준일 종가 매수 기준이며 검증 중입니다.">
+                <select id="signalSelectFilter" class="grade-combobox-select" onchange="handleSignalSelectChange()" title="강한 마감 + 추세 통과 후보 규칙. 기준일 종가 매수 기준이며 검증 중입니다.">
                   <option value="ALL" selected>전체 매수신호 (0개)</option>
                   <option value="A">A(매수) (0개)</option>
                   <option value="B">B(재검토) (0개)</option>
@@ -199,15 +183,6 @@
                   </div>
                 </div>
 
-                <!-- 3. Overheat Status (과열여부) Filter Combobox -->
-                <select id="overheatSelectFilter" class="grade-combobox-select" onchange="handleOverheatSelectChange()">
-                  <option value="ALL" selected>전체 과열 판정 (0개)</option>
-                  <option value="적정">🟢 적정 (안전)</option>
-                  <option value="상승과열">🟡 상승과열 (108~115%)</option>
-                  <option value="단기과열">🔴 단기과열 (115% 이상)</option>
-                  <option value="이격과도">🔵 이격과도 (&lt;97%)</option>
-                </select>
-
                 <!-- 4. Search Input & [조회] Button (Combobox matched size) -->
                 <div class="search-input-group" style="display: flex; align-items: center; gap: 0.4rem; width: 290px; flex-shrink: 0;">
                   <div class="search-input-wrapper" style="flex: 1; width: 100%; margin: 0;">
@@ -229,22 +204,15 @@
                   <tr>
                     <th onclick="sortTable('종목코드')">코드 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('종목명')">종목명 <i class="fa-solid fa-sort"></i></th>
-                    <th onclick="sortTable('섹터')">대표 섹터 <i class="fa-solid fa-sort"></i></th>
-                    <th onclick="sortTable('투자등급')">투자등급 <i class="fa-solid fa-sort"></i></th>
-                    <th onclick="sortTable('매수신호')" title="강한 마감 + 정배열 후보 규칙. 기준일 종가 매수 기준이며 검증 중입니다.">매수신호 <i class="fa-solid fa-sort"></i></th>
-                    <th>등급변동</th>
-                    <th>변동이유</th>
+                    <th onclick="sortTable('시장')">시장 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('섹터')">섹터 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('매수신호')" title="강한 마감 + 추세 통과 후보 규칙. 기준일 종가 매수 기준이며 검증 중입니다.">매수신호 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('추세통과')" title="종가가 60일선 위, 60일선 상승, 1년 최고 종가의 -15% 이내">통과 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('3개월수익률')" title="60거래일 전 종가 대비">3개월 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('차트꼬리')">차트 꼬리 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('20일이격도')">20일이격도 <i class="fa-solid fa-sort"></i></th>
-                    <th onclick="sortTable('과열여부')">과열여부 <i class="fa-solid fa-sort"></i></th>
-                    <th onclick="sortTable('추세단계')">추세단계 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('현재가')">현재가 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('등락률')">등락률 <i class="fa-solid fa-sort"></i></th>
-                    <th>쌍끌이</th>
-                    <th>외인연속</th>
-                    <th>기관연속</th>
-                    <th>20일선위</th>
-                    <th>정배열</th>
                     <th>상세링크</th>
                   </tr>
                 </thead>
@@ -268,30 +236,149 @@
 
         </section>
         
-        <!-- View 2: Daily AI Report Markdown Render -->
-        <section id="viewReport" class="view-panel">
-          <div class="report-header-bar">
-            <div class="report-title-info">
-              <h2 id="reportPageTitle">📅 AI 종합 추세추종 리포트</h2>
-              <div class="report-date-picker-wrap">
-                <input type="date" id="reportHeaderDatePicker" onchange="handleDatePickerChange(this.value)">
+        <!-- View: 섹터별 종목조회 (섹터 순위 → 선택한 섹터의 종목) -->
+        <section id="viewSector" class="view-panel active">
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-ranking-star"></i> 섹터 순위</h2>
+                <p class="section-desc">
+                  통과 = 종가가 60일선 위, 60일선 상승, 1년 최고 종가의 -15% 이내. 통과 종목이 많은 섹터가 위에 옵니다. 섹터를 누르면 아래에 종목이 나옵니다.<br>
+                  네이버 증권 일봉(수정주가), 기준일 장 마감 확정치. 과거 데이터로 검증하지 않은 기준이며 매수 추천이 아닙니다.
+                </p>
               </div>
             </div>
-          </div>
-          
-          <div class="report-paper markdown-body" id="markdownRenderBox">
-            <div class="report-loading">
-              <i class="fa-solid fa-spinner fa-spin"></i> 마크다운 리포트를 불러오는 중입니다...
+            <div class="table-responsive">
+              <table class="data-table sector-rank-table">
+                <thead>
+                  <tr>
+                    <th>순위</th>
+                    <th>섹터</th>
+                    <th>통과</th>
+                    <th>종목 수</th>
+                    <th>통과 비율</th>
+                    <th title="통과 종목의 3개월(60거래일) 상승률 중앙값">통과 종목 3개월</th>
+                    <th title="통과 종목 중 기준일에 강한 마감(+3% 이상, 거래량 1.5배 이상)인 종목 수">★ 오늘 신호</th>
+                  </tr>
+                </thead>
+                <tbody id="sectorRankBody">
+                  <!-- Rows populated via JS -->
+                </tbody>
+              </table>
             </div>
           </div>
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-table-list"></i> <span id="sectorStockTitle">섹터 종목</span></h2>
+                <p class="section-desc">통과 종목을 먼저, 그 안에서 3개월 상승률이 큰 순서로 보여 줍니다. ★ = 기준일 강한 마감(+3% 이상, 거래량이 직전 20일 평균의 1.5배 이상)</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>순위</th>
+                    <th>코드</th>
+                    <th>종목명</th>
+                    <th>시장</th>
+                    <th>통과</th>
+                    <th title="60거래일 전 종가 대비">3개월</th>
+                    <th title="1년(250거래일) 최고 종가 대비">고점 대비</th>
+                    <th>오늘 신호</th>
+                    <th>현재가</th>
+                    <th>등락률</th>
+                    <th title="강한 마감 + 추세 통과 후보 규칙. 기준일 종가 매수 기준이며 검증 중입니다.">매수신호</th>
+                    <th>상세링크</th>
+                  </tr>
+                </thead>
+                <tbody id="sectorStockBody">
+                  <!-- Rows populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </section>
 
-        <!-- View 3: Stock Detail Page -->
+        <!-- View: 주도주 (순위가 높은 섹터의 통과 종목) -->
+        <section id="viewLeaders" class="view-panel">
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-crown"></i> 섹터별 주도주</h2>
+                <p class="section-desc">네이버 증권 일봉(수정주가), 기준일 장 마감 확정치. 과거 데이터로 검증하지 않은 기준이며 매수 추천이 아닙니다.</p>
+              </div>
+            </div>
+
+            <div class="concept-box">
+              <div class="concept-title"><i class="fa-solid fa-circle-info"></i> 주도주란</div>
+              <p class="concept-lead">지금 가장 강한 섹터 안에서, 추세가 살아 있고, 가장 세게 오르고 있는 종목입니다.</p>
+              <ol class="concept-steps">
+                <li><strong>강한 섹터에 속한다</strong><span>통과 종목이 많은 섹터가 강한 섹터입니다. 약한 섹터의 1등은 주도주로 보지 않습니다.</span></li>
+                <li><strong>추세가 살아 있다 (통과)</strong><span>종가가 60일선 위, 60일선이 올라가는 중, 종가가 1년 최고 종가의 -15% 이내. 고점에서 크게 빠졌다가 튀어 오른 종목을 걸러 냅니다.</span></li>
+                <li><strong>그 안에서 가장 많이 올랐다</strong><span>최근 3개월(60거래일) 상승률이 큰 순서로 줄을 세웁니다.</span></li>
+              </ol>
+              <p class="concept-note">
+                이 목록은 "무엇을 볼지"를 정합니다. "언제 살지"는 ★(기준일 강한 마감: +3% 이상, 거래량이 직전 20일 평균의 1.5배 이상)와 매수신호로 봅니다.<br>
+                많이 오른 종목만 모은 목록이라 꺾일 때 크게 빠집니다. 종가가 최고 종가 -5% 이하면 파는 규칙과 함께 봐야 합니다.
+              </p>
+            </div>
+
+            <div class="table-toolbar" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; background: rgba(0, 0, 0, 0.03); padding: 0.85rem 1rem; border-radius: 12px; margin-bottom: 1rem;">
+              <select id="leaderSectorCount" class="grade-combobox-select" onchange="renderLeadersView()">
+                <option value="3">섹터 상위 3개</option>
+                <option value="4" selected>섹터 상위 4개</option>
+                <option value="5">섹터 상위 5개</option>
+                <option value="ALL">섹터 전체</option>
+              </select>
+              <select id="leaderStockCount" class="grade-combobox-select" onchange="renderLeadersView()">
+                <option value="3">섹터당 3종목</option>
+                <option value="5" selected>섹터당 5종목</option>
+                <option value="10">섹터당 10종목</option>
+              </select>
+              <select id="leaderMarket" class="grade-combobox-select" onchange="renderLeadersView()">
+                <option value="ALL" selected>코스피 + 코스닥</option>
+                <option value="코스피">코스피만</option>
+                <option value="코스닥">코스닥만</option>
+              </select>
+              <span class="table-info">총 <strong id="leaderCount">0</strong>개 종목</span>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>순위</th>
+                    <th>코드</th>
+                    <th>종목명</th>
+                    <th>시장</th>
+                    <th title="60거래일 전 종가 대비">3개월</th>
+                    <th title="1년(250거래일) 최고 종가 대비">고점 대비</th>
+                    <th>오늘 신호</th>
+                    <th>현재가</th>
+                    <th>등락률</th>
+                    <th title="강한 마감 + 추세 통과 후보 규칙. 기준일 종가 매수 기준이며 검증 중입니다.">매수신호</th>
+                    <th>상세링크</th>
+                  </tr>
+                </thead>
+                <tbody id="leaderBody">
+                  <!-- Rows populated via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- View: 종목 상세 -->
         <section id="viewStockDetail" class="view-panel">
           <div class="report-header-bar">
             <div class="report-title-info">
-              <h2 id="detailStockTitle">종목 상세 분석</h2>
-              <span class="badge-grade grade-aplus" id="detailStockGradeBadge">A+</span>
+              <h2 id="detailStockTitle">종목 상세</h2>
             </div>
           </div>
 
@@ -299,86 +386,75 @@
           <div class="section-card detail-main-card">
             <div class="detail-header-flex">
               <div>
-                <span class="detail-code-badge" id="detailStockCode">005930</span>
-                <h1 class="detail-stock-name" id="detailStockName">삼성전자</h1>
+                <span class="detail-code-badge" id="detailStockCode">-</span>
+                <h1 class="detail-stock-name" id="detailStockName">-</h1>
                 <div class="detail-tags-row">
-                  <span class="stock-sector-tag" id="detailStockSector">반도체/소부장</span>
-                  <span id="detailStockDualBadge"></span>
+                  <span class="stock-sector-tag" id="detailStockMarket">-</span>
+                  <span class="stock-sector-tag" id="detailStockSector">-</span>
                 </div>
               </div>
-              
+
               <div class="detail-price-box">
-                <span class="detail-price-label">현재가 (종가)</span>
-                <div class="detail-price-num" id="detailStockPrice">75,000원</div>
+                <span class="detail-price-label">현재가 (기준일 종가)</span>
+                <div class="detail-price-num" id="detailStockPrice">0원</div>
                 <a href="#" id="detailStockNaverLink" target="_blank" class="link-naver">네이버 증권 시세 페이지 ↗</a>
               </div>
             </div>
           </div>
 
-          <!-- Daily Grade Change Chart Section -->
-          <div class="section-card">
-            <div class="section-header">
-              <h2><i class="fa-solid fa-chart-line highlight-gold"></i> 📈 일별 투자등급 변화 그래프</h2>
-              <p class="section-desc">날짜별 수급/추세 변동에 따른 투자등급(A+ ➔ A ➔ B ➔ C) 이력</p>
-            </div>
-            <div class="chart-box-wrapper" style="position: relative; height: 320px;">
-              <canvas id="gradeHistoryChart"></canvas>
-            </div>
-          </div>
-
-          <!-- Key Investor Metrics Cards -->
+          <!-- 지표 카드: 매수신호와 추세 통과 -->
           <div class="kpi-grid">
-            <div class="kpi-card card-dual">
-              <div class="kpi-icon"><i class="fa-solid fa-user-astronaut"></i></div>
+            <div class="kpi-card card-a">
+              <div class="kpi-icon"><i class="fa-solid fa-bullseye"></i></div>
               <div class="kpi-info">
-                <span class="kpi-label">외국인 수급</span>
-                <span class="kpi-value" id="detailForeignSeq">0일 연속</span>
-                <span class="kpi-sub" id="detailForeignSum">최근3일: 0주</span>
-              </div>
-            </div>
-            
-            <div class="kpi-card card-dual">
-              <div class="kpi-icon"><i class="fa-solid fa-building-columns"></i></div>
-              <div class="kpi-info">
-                <span class="kpi-label">기관 수급</span>
-                <span class="kpi-value" id="detailOrganSeq">0일 연속</span>
-                <span class="kpi-sub" id="detailOrganSum">최근3일: 0주</span>
-              </div>
-            </div>
-            
-            <div class="kpi-card card-total">
-              <div class="kpi-icon"><i class="fa-solid fa-pie-chart"></i></div>
-              <div class="kpi-info">
-                <span class="kpi-label">외국인 보유율</span>
-                <span class="kpi-value" id="detailForeignRatio">0.0%</span>
-                <span class="kpi-sub">지분 소진 현황</span>
+                <span class="kpi-label">매수신호 (검증 중인 후보 규칙)</span>
+                <span class="kpi-value" id="detailBuySignal">-</span>
+                <span class="kpi-sub" id="detailBuyReason">-</span>
               </div>
             </div>
 
             <div class="kpi-card card-aplus">
-              <div class="kpi-icon"><i class="fa-solid fa-layer-group"></i></div>
+              <div class="kpi-icon"><i class="fa-solid fa-arrow-trend-up"></i></div>
               <div class="kpi-info">
-                <span class="kpi-label">이동평균선 상태</span>
-                <span class="kpi-value" id="detailMaStatus">정배열 달성</span>
-                <span class="kpi-sub" id="detailMa20Status">20일선 위 (O)</span>
+                <span class="kpi-label">추세 통과</span>
+                <span class="kpi-value" id="detailTrendPass">-</span>
+                <span class="kpi-sub">60일선 위 · 60일선 상승 · 1년 고점 -15% 이내</span>
+              </div>
+            </div>
+
+            <div class="kpi-card card-total">
+              <div class="kpi-icon"><i class="fa-solid fa-chart-line"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">3개월 상승률</span>
+                <span class="kpi-value" id="detailReturn3m">-</span>
+                <span class="kpi-sub">60거래일 전 종가 대비</span>
               </div>
             </div>
 
             <div class="kpi-card card-upgraded">
-              <div class="kpi-icon"><i class="fa-solid fa-gauge-high"></i></div>
+              <div class="kpi-icon"><i class="fa-solid fa-mountain"></i></div>
               <div class="kpi-info">
-                <span class="kpi-label">20일 이격도 / 과열도</span>
-                <span class="kpi-value" id="detailDisparity">100.0%</span>
-                <span class="kpi-sub" id="detailOverheat">적정(안전)</span>
+                <span class="kpi-label">고점 대비</span>
+                <span class="kpi-value" id="detailFromHigh">-</span>
+                <span class="kpi-sub">1년(250거래일) 최고 종가 대비</span>
               </div>
             </div>
 
-            <div class="kpi-card card-a">
-              <div class="kpi-icon"><i class="fa-solid fa-bullseye"></i></div>
+            <div class="kpi-card card-dual">
+              <div class="kpi-icon"><i class="fa-solid fa-gauge-high"></i></div>
               <div class="kpi-info">
-                <span class="kpi-label">추세단계</span>
-                <span class="kpi-value" id="detailPhase">-</span>
-                <span class="kpi-sub" id="detailBuySignal">매수신호: -</span>
+                <span class="kpi-label">20일 이격도</span>
+                <span class="kpi-value" id="detailDisparity">-</span>
+                <span class="kpi-sub">종가 ÷ 20일선</span>
+              </div>
+            </div>
+
+            <div class="kpi-card card-dual">
+              <div class="kpi-icon"><i class="fa-solid fa-chart-column"></i></div>
+              <div class="kpi-info">
+                <span class="kpi-label">기준일 등락률</span>
+                <span class="kpi-value" id="detailChange">-</span>
+                <span class="kpi-sub" id="detailCandle">-</span>
               </div>
             </div>
           </div>
@@ -386,7 +462,7 @@
           <!-- Moving Average Prices Table -->
           <div class="section-card">
             <div class="section-header">
-              <h2><i class="fa-solid fa-sliders"></i> 이동평균선(MA) 세부 가격 지표</h2>
+              <h2><i class="fa-solid fa-sliders"></i> 이동평균선 (수정주가 기준)</h2>
             </div>
             <div class="table-responsive">
               <table class="data-table">
@@ -412,51 +488,201 @@
 
         </section>
 
-        <!-- View 4: Trend Strategy (stockDesc1) Page -->
-        <section id="viewStrategy" class="view-panel">
-          <div class="report-header-bar">
-            <div class="report-title-info">
-              <h2><i class="fa-solid fa-chess-knight highlight-gold"></i> ETF 주도주 추세추종 매매 전략</h2>
-              <span class="history-badge">Strategy Manual</span>
+        <!-- View: 가상 주식거래 리포트 (reports/virtual_trades.csv) -->
+        <section id="viewVirtual" class="view-panel">
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-receipt"></i> 가상 주식거래 리포트 <span id="virtualDateText"></span></h2>
+                <p class="section-desc">실제 돈을 쓰지 않고 규칙대로 샀다고 치고 적는 모의 거래 기록입니다. 실제 보유 종목이 아니며 매수·매도 추천이 아닙니다. 네이버 증권 일봉(수정주가), 장 마감 후 확정치</p>
+              </div>
+            </div>
+
+            <div class="concept-box">
+              <div class="concept-title"><i class="fa-solid fa-circle-info"></i> 가상 거래 규칙</div>
+              <ol class="concept-steps">
+                <li><strong>매수</strong><span>매수신호 A인 날, 그날 종가에 100만 원어치 삽니다. 매수신호 A = 추세 통과(60일선 위 · 60일선 상승 · 1년 고점 -15% 이내) + 강한 마감(+3% 이상, 거래량 1.5배 이상). (1주 단위로 가장 가까운 수량)</span></li>
+                <li><strong>보유</strong><span>오르면 팔지 않습니다. 종가가 오르면 손절가도 따라 올라갑니다.</span></li>
+                <li><strong>매도</strong><span>종가가 손절가(보유 중 최고 종가의 -5%) 이하인 날, 그날 종가에 전량 팝니다.</span></li>
+                <li><strong>다시 사기</strong><span>들고 있는 종목은 다시 사지 않습니다. 판 다음 날부터 조건이 다시 나오면 삽니다.</span></li>
+              </ol>
+              <p class="concept-note">
+                과거 4년(2022-10 ~ 2026-10) 백테스트에서 이 규칙은 승률 약 38%, 매매당 평균 +2.2%(비용 0.25% 차감)였습니다. 세 번 중 두 번은 손실로 끝나고, 강세장 구간만 검증했습니다.<br>
+                수수료·세금을 넣지 않았고 종가에 정확히 사고 판다고 가정합니다. 종가로 팔기 때문에 갭 하락한 날은 -5%보다 크게 잃습니다.
+              </p>
+            </div>
+
+            <div class="kpi-grid">
+              <div class="kpi-card card-total">
+                <div class="kpi-icon"><i class="fa-solid fa-layer-group"></i></div>
+                <div class="kpi-info">
+                  <span class="kpi-label">보유 종목</span>
+                  <span class="kpi-value" id="virtualHoldCount">-</span>
+                  <span class="kpi-sub" id="virtualTodayTrades">-</span>
+                </div>
+              </div>
+              <div class="kpi-card card-dual">
+                <div class="kpi-icon"><i class="fa-solid fa-coins"></i></div>
+                <div class="kpi-info">
+                  <span class="kpi-label">보유 원금</span>
+                  <span class="kpi-value" id="virtualCost">-</span>
+                  <span class="kpi-sub" id="virtualValue">-</span>
+                </div>
+              </div>
+              <div class="kpi-card card-a">
+                <div class="kpi-icon"><i class="fa-solid fa-chart-line"></i></div>
+                <div class="kpi-info">
+                  <span class="kpi-label">평가손익 (보유 중)</span>
+                  <span class="kpi-value" id="virtualOpenProfit">-</span>
+                  <span class="kpi-sub" id="virtualOpenRate">-</span>
+                </div>
+              </div>
+              <div class="kpi-card card-aplus">
+                <div class="kpi-icon"><i class="fa-solid fa-sack-dollar"></i></div>
+                <div class="kpi-info">
+                  <span class="kpi-label">누적 실현손익 (매도 완료)</span>
+                  <span class="kpi-value" id="virtualRealized">-</span>
+                  <span class="kpi-sub" id="virtualSellCount">-</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>상태</th>
+                    <th>코드</th>
+                    <th>종목명</th>
+                    <th>시장</th>
+                    <th>섹터</th>
+                    <th>수량</th>
+                    <th>매수일</th>
+                    <th>매수가</th>
+                    <th>종가</th>
+                    <th title="보유 중 최고 종가의 -5%">손절가</th>
+                    <th>매도가</th>
+                    <th>평가금액</th>
+                    <th>손익</th>
+                    <th>수익률</th>
+                    <th>비고</th>
+                  </tr>
+                </thead>
+                <tbody id="virtualBody">
+                  <!-- Rows populated via JS -->
+                </tbody>
+              </table>
             </div>
           </div>
 
           <div class="section-card">
-            <div id="strategyMarkdownRenderBox" class="markdown-card">
-              <div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 전략 문서를 불러오는 중입니다...</div>
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-calendar-days"></i> <span id="virtualHistoryTitle">종목 일별 기록</span></h2>
+                <p class="section-desc">위 표에서 종목명을 누르면 그 종목의 날짜별 기록이 나옵니다.</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>날짜</th>
+                    <th>상태</th>
+                    <th>매수가</th>
+                    <th>종가</th>
+                    <th>최고 종가</th>
+                    <th>손절가</th>
+                    <th>매도가</th>
+                    <th>손익</th>
+                    <th>수익률</th>
+                    <th>비고</th>
+                  </tr>
+                </thead>
+                <tbody id="virtualHistoryBody">
+                  <!-- Rows populated via JS -->
+                </tbody>
+              </table>
             </div>
           </div>
+
         </section>
 
-        <!-- View 5: Priority Buying Strategy (stockDesc2) Page -->
-        <section id="viewPriorityStrategy" class="view-panel">
-          <div class="report-header-bar">
-            <div class="report-title-info">
-              <h2><i class="fa-solid fa-list-check highlight-blue"></i> 주도주 매수 우선순위 종목 선택 가이드</h2>
-              <span class="history-badge">Priority Guide</span>
+        <!-- View: 매매 규칙 (검증 중인 후보 규칙 안내) -->
+        <section id="viewRules" class="view-panel">
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-scale-balanced"></i> 매매 규칙 (검증 중인 후보)</h2>
+                <p class="section-desc">확정된 규칙이 아닙니다. 과거 데이터 분석이며 매수·매도 추천이 아닙니다. 데이터: 네이버 증권 일봉(수정주가), 장 마감 후 확정치</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table rules-table">
+                <thead>
+                  <tr><th>구분</th><th>조건</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><strong>매수</strong></td><td>추세 통과 + 강한 마감인 날의 종가 (매수신호 A)</td></tr>
+                  <tr><td><strong>강한 마감</strong></td><td>당일 등락률 +3% 이상, 거래량이 직전 20거래일 평균의 1.5배 이상</td></tr>
+                  <tr><td><strong>추세 통과</strong></td><td>종가 &gt; 60일선, 60일선이 5거래일 전보다 높음, 종가가 1년(250거래일) 최고 종가의 -15% 이내</td></tr>
+                  <tr><td><strong>매도</strong></td><td>종가가 보유 중 최고 종가의 -5% 이하가 되면 그날 종가에 전량</td></tr>
+                  <tr><td><strong>매수신호</strong></td><td>A(매수) = 강한 마감 + 추세 통과 / B(재검토) = 둘 중 하나만 / C(매수금지) = 둘 다 아님</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
 
           <div class="section-card">
-            <div id="priorityStrategyRenderBox" class="markdown-card">
-              <div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 매수 우선순위 가이드를 불러오는 중입니다...</div>
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-ranking-star"></i> 섹터 순위와 주도주</h2>
+                <p class="section-desc">섹터 순위와 주도주 줄 세우기는 2026-10-10에 정한 기준이며 과거 데이터로 검증하지 않았습니다</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table rules-table">
+                <thead>
+                  <tr><th>구분</th><th>조건</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><strong>통과</strong></td><td>위의 추세 통과와 같은 조건</td></tr>
+                  <tr><td><strong>섹터 순위</strong></td><td>통과 종목 수가 많은 순서 (같으면 통과 비율이 높은 순서)</td></tr>
+                  <tr><td><strong>주도주</strong></td><td>순위가 높은 섹터의 통과 종목 중 3개월(60거래일) 상승률이 큰 순서</td></tr>
+                  <tr><td><strong>★ 오늘 신호</strong></td><td>기준일이 강한 마감인 종목</td></tr>
+                  <tr><td><strong>섹터 분류</strong></td><td>네이버 증권 업종을 15개 섹터로 묶음. 2차전지는 ETF 편입 기준, 일부 종목은 손으로 고침</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
+
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-triangle-exclamation"></i> 검증 결과와 한계</h2>
+                <p class="section-desc">매수신호 후보 규칙의 백테스트 (2022-10 ~ 2026-10, 왕복 비용 0.25% 차감)</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table rules-table">
+                <thead>
+                  <tr><th>항목</th><th>내용</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><strong>결과</strong></td><td>승률 약 38%, 손익비 약 2.6, 매매당 평균 +2.21%. 세 번 중 두 번 가까이는 손절로 끝납니다. 2022·2023년에는 조건 없이 사는 것보다 낮았습니다</td></tr>
+                  <tr><td><strong>하락장</strong></td><td>강세장 구간만 검증했고 하락장은 검증하지 않았습니다</td></tr>
+                  <tr><td><strong>체결</strong></td><td>종가에 정확히 체결된다고 가정한 숫자입니다. 장 마감 후에 본 신호를 다음 날 사면 다른 매매입니다</td></tr>
+                  <tr><td><strong>대상 종목</strong></td><td>지금 ETF에 들어 있는 종목으로 과거를 센 것이라 실제보다 좋게 나옵니다</td></tr>
+                  <tr><td><strong>차트 밖의 위험</strong></td><td>유상증자, 거래정지, 실적 충격은 다음 날 갭으로 나와 -5% 매도선을 건너뜁니다</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
         </section>
 
       </main>
-    </div>
-  </div>
-
-  <!-- Custom Alert Modal Dialog Overlay -->
-  <div id="customModalOverlay" class="modal-overlay">
-    <div class="modal-card">
-      <div class="modal-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
-      <h3 class="modal-title" id="modalTitle">데이터 미존재 알림</h3>
-      <p class="modal-body-text" id="modalBodyText">해당 날짜의 분석 데이터가 존재하지 않습니다.</p>
-      <div class="modal-actions">
-        <button class="btn-modal-close" id="btnModalClose" onclick="closeCustomModal()">닫기 (확인)</button>
-      </div>
     </div>
   </div>
 

@@ -5,18 +5,39 @@
 📌 [통합 실행기] 네이버 주식 ETF 주도주 분석 파이프라인 매니저 (main.py)
 ================================================================================
 1. 프로그램 역할:
-   1단계부터 5단계까지의 개별 데이터 수집 및 분석 스크립트를 하나로 통합하여
+   1단계부터 5단계까지의 개별 데이터 수집 및 분석 스크립트와 가상 주식거래 장부 갱신을 하나로 통합하여
    터미널에서 번호 선택(대화형 메뉴) 또는 옵션 명령어로 손쉽게 실행할 수 있게 
    해주는 전체 파이프라인 관리 메인 프로그램입니다.
 
 2. 파이프라인 구성 단계:
    - [1단계] `getEtfList.py`      : 네이버 금융 ETF 전체 목록 수집 -> data/etf_list.csv
-   - [2단계] `getEtfDtlList.py`   : ETF별 상위 1~5위 주요 구성종목 수집 -> data/etf_dtl_list.csv
-   - [3단계] `getEtfTopStockList.py`: 순수 국내주식 320개 정제 및 6자리 종목코드 매핑 -> data/etf_top_stocks.csv
-   - [4단계] `getEtfInvestorFlow.py`: 외인/기관 수급 & 이동평균선(MA) 통합 분석 -> reports/report_YYYYMMDD.csv
-   - [5단계] `getEtfAiReport.py`  : AI 추세추종 종합 분석 마크다운/PDF 리포트 자동 생성 -> reports/report_YYYYMMDD.md & reports/pdf/report_YYYYMMDD.pdf
+   - [2단계] `getEtfDtlList.py`   : ETF별 상위 1~10위 주요 구성종목 수집 -> data/etf_dtl_list.csv
+   - [3단계] `getEtfTopStockList.py`: 순수 국내주식 약 500개 정제 및 6자리 종목코드 매핑 -> data/etf_top_stocks.csv
+   - [4단계] `getEtfInvestorFlow.py`: 일봉 분석 (이동평균선, 매수신호, 추세 통과) -> reports/report_YYYYMMDD.csv
+   - [5단계] `getEtfAiReport.py`  : 추세추종 분석 마크다운/PDF 리포트 자동 생성 -> reports/report_YYYYMMDD.md & pdf/report_YYYYMMDD.pdf
+   - [가상 거래] `virtualTrade.py` : 가상 주식거래 장부에 하루치 기록 -> reports/virtual_trades.csv
+                                   (4단계나 5단계를 돌린 날 자동 실행. 실패해도 나머지 단계는 계속 진행)
 
-3. 주요 실행 방법 및 옵션 조합:
+3. 매일 장 마감 후 실행 순서 (`python3 main.py --step 4,5 --telegram --push-git`):
+   4단계 -> 5단계 -> 가상 거래 -> 대시보드 날짜 목록 갱신 -> 텔레그램 -> Git 커밋·푸시
+   (2026-10-10에 4단계와 텔레그램 내용을 바꾸고 가상 거래를 추가했습니다. 이 순서 전체를 이어서 돌려 본 적은
+    아직 없으므로, 바꾼 뒤 첫 실행은 reports/log_YYYYMMDD.txt 를 확인하세요.)
+
+4. 지금 쓰는 판정 규칙 (정의는 `buySignal.py`, 근거는 `docs/종목선정_검증.md` 14번):
+   - 매수신호 A = 강한 마감(당일 +3% 이상, 거래량이 직전 20일 평균의 1.5배 이상)
+                 + 추세 통과(종가 > 60일선, 60일선 상승, 종가가 1년 최고 종가의 -15% 이내)
+   - 텔레그램은 매수신호 A 종목과 섹터 순위 상위 4개를 보냅니다.
+   - 가상 거래는 매수신호 A 종목을 그날 종가에 100만 원어치 샀다고 치고,
+     종가가 손절가(보유 중 최고 종가의 -5%) 이하인 날 종가에 팔았다고 칩니다. 장부는 2026-10-08부터 시작합니다.
+   - 검증 중인 후보 규칙이며 매수·매도 추천이 아닙니다. 가상 거래는 실제 보유 종목이 아닙니다.
+
+5. 주의:
+   - 이 저장소는 공개입니다. `--push-git` 은 `git add -A` 후 커밋·푸시하므로 폴더에 넣은 파일은 그대로 공개됩니다.
+     가상 거래 장부(reports/virtual_trades.csv)도 함께 올라갑니다. 실제 매매 내역은 저장소에 넣지 않습니다.
+   - 가상 거래는 날짜 순서대로 쌓아야 합니다. 지난 날짜를 다시 돌리려면 장부에서 그 뒤 날짜를 먼저 지워야 합니다.
+   - 데이터: 네이버 증권 일봉(수정주가), 장 마감 후 확정치.
+
+6. 주요 실행 방법 및 옵션 조합:
    - 대화형 메뉴 (추천) : `python3 main.py` (엔터 치면 기본 4+5단계 실행)
    - 전체 파이프라인    : `python3 main.py --all` (1단계부터 5단계까지 순차 실행)
    - 특정 단계 지정     : `python3 main.py --step 4,5`
@@ -26,7 +47,8 @@
    - 텔레그램 단독 발송: `python3 main.py --telegram-only` (분석 없이 기존 리포트만 전송)
    - 깃허브 자동 푸시   : `python3 main.py --push-git` (리포트/결과 파일 GitHub Push: "주식분석_자동화_YYYYMMDD")
    - 깃푸시 단독 실행   : `python3 main.py --push-git-only` (분석 없이 Git 커밋 및 Push만 진행)
-   - 맥 4시 자동스케줄er: `python3 main.py --step 4,5 --telegram --push-git` (통합 실행)
+   - 맥 4시 자동스케줄러: `python3 main.py --step 4,5 --telegram --push-git` (통합 실행)
+   - 가상 거래만 실행   : `python3 virtualTrade.py --date 20261008`
 ================================================================================
 """
 
@@ -78,8 +100,8 @@ def show_interactive_menu():
     print("  1. [1단계] ETF 전체 목록 수집                  (`getEtfList.py`)")
     print("  2. [2단계] ETF 상위 1~10위 구성종목 수집         (`getEtfDtlList.py`)")
     print("  3. [3단계] 주도주 6자리 종목코드/상세페이지 추출 (`getEtfTopStockList.py`)")
-    print("  4. [4단계] 외국인/기관 수급 & 이동평균선 통합 분석 (`getEtfInvestorFlow.py`)")
-    print("  5. [5단계] AI 추세추종 분석 마크다운 리포트 생성 (`getEtfAiReport.py`)")
+    print("  4. [4단계] 일봉 분석: 이동평균선, 매수신호, 추세 통과 (`getEtfInvestorFlow.py`)")
+    print("  5. [5단계] 추세추종 분석 마크다운 리포트 생성 (`getEtfAiReport.py`)")
     print("  0. [전체]  1단계부터 5단계까지 전체 파이프라인 순차 실행")
     print("=" * 90)
     print("💡 팁: 쉼표나 하이픈으로 여러 단계를 지정할 수 있습니다 (예: 4,5 또는 1-5 또는 기본 엔터: 4+5단계)")
@@ -97,7 +119,7 @@ def show_interactive_menu():
         
     # 아무것도 입력하지 않고 엔터를 치거나 4를 입력한 경우 -> 매일 필수인 4단계+5단계 자동 지정
     if not user_input or user_input in ("4", "4,5", "4-5"):
-        print("💡 기본값인 4단계(수급&이평선 분석) + 5단계(AI 리포트 생성)를 순차 실행합니다.")
+        print("💡 기본값인 4단계(일봉 분석) + 5단계(리포트 생성)를 순차 실행합니다.")
         return {4, 5}
         
     # 0번 또는 all 입력 시 1~5단계 전체 실행
@@ -242,37 +264,36 @@ TELEGRAM_MAX_STOCKS = 40  # 메세지 한 통에 싣는 최대 종목 수 (텔�
 
 def build_signal_message(report_file, date_str):
     """
-    4단계 분석 CSV에서 매수신호 A 종목을 뽑아 텔레그램 요약 메세지를 만듭니다.
+    4단계 분석 CSV에서 매수신호 A 종목과 섹터 순위를 뽑아 텔레그램 요약 메세지를 만듭니다.
 
     :return: (메세지 문자열, 매수신호 A 종목 수)
     """
-    signal_stocks = []
-    grade_counts = {}
+    from getEtfAiReport import rank_sectors, has_sector_stats, LEADER_SECTORS
+
     with open(report_file, "r", encoding="utf-8-sig") as f:
-        for row in csv.DictReader(f):
-            grade = row.get("투자등급", "").strip()
-            grade_counts[grade] = grade_counts.get(grade, 0) + 1
-            if row.get("매수신호", "").strip().startswith("A"):
-                signal_stocks.append(row)
+        rows = list(csv.DictReader(f))
+    signal_stocks = [row for row in rows if row.get("매수신호", "").strip().startswith("A")]
 
     lines = [f"🎯 <b>[매수신호 A 알림 - {date_str}]</b>",
-             "강한 마감(+3% 이상, 거래량 1.5배 이상) + 정배열(종가 > 5 > 20 > 60일선)", ""]
+             "강한 마감(+3% 이상, 거래량 1.5배 이상) + 추세 통과(60일선 위, 60일선 상승, 1년 고점 -15% 이내)", ""]
     if signal_stocks:
         lines.append(f"<b>[매수신호 A 종목 {len(signal_stocks)}개]</b>")
         for idx, row in enumerate(signal_stocks[:TELEGRAM_MAX_STOCKS], 1):
             name = row.get("종목명", "").strip()
-            sector = row.get("섹터", "").strip() or "일반 주도주"
+            sector = row.get("섹터", "").strip() or "-"
             price = row.get("현재가", "").strip() or "0"
             chg = row.get("등락률", "").strip() or "-"
             candle = row.get("차트꼬리", "").strip() or "-"
-            lines.append(f"{idx}. <b>{name}</b> / {sector} / {price}원 / {chg} / {candle} / 등급 {row.get('투자등급', '-').strip()}")
+            lines.append(f"{idx}. <b>{name}</b> / {sector} / {price}원 / {chg} / {candle}")
         if len(signal_stocks) > TELEGRAM_MAX_STOCKS:
             lines.append(f"... 외 {len(signal_stocks) - TELEGRAM_MAX_STOCKS}개 (대시보드에서 확인)")
     else:
         lines.append("ℹ️ 오늘 매수신호 A 종목이 없습니다.")
 
     lines.append("")
-    lines.append(f"투자등급 분포: A+ {grade_counts.get('A+', 0)}개 / A {grade_counts.get('A', 0)}개 / B {grade_counts.get('B', 0)}개 / C {grade_counts.get('C', 0)}개")
+    if has_sector_stats(rows):
+        top_sectors = [sec for sec in rank_sectors(rows) if sec["통과"] > 0][:LEADER_SECTORS]
+        lines.append("섹터 순위: " + " / ".join(f"{idx}. {sec['섹터']}(통과 {sec['통과']})" for idx, sec in enumerate(top_sectors, 1)))
     lines.append("※ 기준일 종가 매수 기준, 검증 중인 후보 규칙입니다. 매도는 종가가 보유 중 최고 종가 -5% 이하일 때. 매수·매도 추천이 아닙니다.")
     return "\n".join(lines), len(signal_stocks)
 
@@ -408,7 +429,7 @@ def main():
     load_env_file()
     
     parser = argparse.ArgumentParser(
-        description="네이버 주식 ETF 주도주 수급 및 이동평균선(추세추종) 분석 파이프라인 통합 실행기"
+        description="네이버 주식 ETF 주도주 추세추종 분석 파이프라인 통합 실행기"
     )
     # 옵션 파서 등록
     parser.add_argument("--all", action="store_true", help="1~5단계 전체 파이프라인을 순차적으로 실행합니다.")
@@ -418,8 +439,8 @@ def main():
     parser.add_argument("--step1", "--etf-list", action="store_true", help="1단계: ETF 전체 목록 수집 (getEtfList.py)")
     parser.add_argument("--step2", "--etf-dtl", action="store_true", help="2단계: ETF 상위 구성종목 수집 (getEtfDtlList.py)")
     parser.add_argument("--step3", "--top-stocks", action="store_true", help="3단계: 주도주 6자리 종목코드 추출 (getEtfTopStockList.py)")
-    parser.add_argument("--step4", "--investor-flow", action="store_true", help="4단계: 외국인/기관 수급 및 이동평균선 분석 (getEtfInvestorFlow.py)")
-    parser.add_argument("--step5", "--ai-report", action="store_true", help="5단계: AI 추세추종 분석 마크다운 리포트 생성 (getEtfAiReport.py)")
+    parser.add_argument("--step4", "--investor-flow", action="store_true", help="4단계: 일봉 분석 (getEtfInvestorFlow.py)")
+    parser.add_argument("--step5", "--ai-report", action="store_true", help="5단계: 추세추종 분석 마크다운 리포트 생성 (getEtfAiReport.py)")
     
     # 추가 제어 옵션
     parser.add_argument("--limit", type=int, default=0, help="스크립트별 처리 종목 수 제한 (테스트용)")
@@ -430,7 +451,7 @@ def main():
     # 깃푸시 및 텔레그램 전송 옵션
     parser.add_argument("--push-git", "--git", action="store_true", help="분석 완료 후 Git 커밋 및 Push를 자동으로 실행합니다. (기본값: False)")
     parser.add_argument("--push-git-only", "--git-only", "--only-git", action="store_true", help="1~5단계 수집/분석을 실행하지 않고, Git 커밋 및 Push만 단독으로 실행합니다.")
-    parser.add_argument("--telegram", "--notify", action="store_true", help="분석 완료 후 A+ 등급 핵심 주도주 종목명을 텔레그램으로 전송합니다. (기본값: False)")
+    parser.add_argument("--telegram", "--notify", action="store_true", help="분석 완료 후 매수신호 A 종목과 섹터 순위를 텔레그램으로 전송합니다. (기본값: False)")
     parser.add_argument("--telegram-only", "--only-telegram", action="store_true", help="1~5단계 수집/분석을 실행하지 않고 기존 최신 리포트로 텔레그램 알림만 단독 발송합니다.")
     parser.add_argument("--bot-token", type=str, default=os.getenv("TELEGRAM_BOT_TOKEN", ""), help="텔레그램 봇 토큰 (기본값: TELEGRAM_BOT_TOKEN 환경변수)")
     parser.add_argument("--chat-id", type=str, default=os.getenv("TELEGRAM_CHAT_ID", ""), help="텔레그램 대화방/채널 ID (기본값: TELEGRAM_CHAT_ID 환경변수)")
@@ -484,7 +505,7 @@ def main():
         (args.step and str(args.step).strip().lower() in ("0", "none", "telegram", "git"))
     )
     if not steps_to_run and not is_explicit_standalone:
-        print("💡 실행 옵션이 지정되지 않아 기본값으로 4단계(수급 분석) + 5단계(AI 리포트 생성)를 실행합니다.")
+        print("💡 실행 옵션이 지정되지 않아 기본값으로 4단계(일봉 분석) + 5단계(리포트 생성)를 실행합니다.")
         print("   (전체 파이프라인 1~5단계 실행: python3 main.py --all)")
         steps_to_run = {4, 5}
 
@@ -529,7 +550,7 @@ def main():
             extra.extend(["--limit", str(args.limit)])
         if args.date:
             extra.extend(["--date", str(args.date)])
-        run_step(4, "외국인/기관 수급 & 이동평균선 통합 분석", "getEtfInvestorFlow.py", extra)
+        run_step(4, "일봉 분석 (이동평균선, 매수신호, 추세 통과)", "getEtfInvestorFlow.py", extra)
 
     if 5 in steps_to_run:
         extra = []
@@ -537,7 +558,16 @@ def main():
             extra.extend(["--date", str(args.date)])
         if args.pdf:
             extra.extend(["--pdf"])
-        run_step(5, "AI 추세추종 분석 리포트(MD 및 PDF) 생성", "getEtfAiReport.py", extra)
+        run_step(5, "추세추종 분석 리포트(MD 및 PDF) 생성", "getEtfAiReport.py", extra)
+
+    # 🧾 가상 주식거래 장부 갱신 (4단계나 5단계를 돌린 날만. 실패해도 나머지 단계는 계속한다)
+    if 4 in steps_to_run or 5 in steps_to_run:
+        print("\n" + "=" * 90)
+        print("🧾 가상 주식거래 리포트 갱신 (`virtualTrade.py`)")
+        print("=" * 90)
+        virtual_cmd = [sys.executable, "virtualTrade.py"] + (["--date", str(args.date)] if args.date else [])
+        if subprocess.run(virtual_cmd).returncode != 0:
+            print("⚠️ 가상 주식거래 리포트 갱신에 실패했습니다. 나머지 단계는 계속 진행합니다.")
 
     # 🗓️ 대시보드 달력/기본 일자용 날짜 목록 자동 갱신
     update_available_dates_js()
@@ -548,7 +578,7 @@ def main():
     # 📲 텔레그램 알림 발송 옵션이 지정된 경우
     if args.telegram:
         print("\n" + "=" * 90)
-        print("📲 [--telegram] 옵션 활성화: A+ 등급 핵심 주도주 텔레그램 알림 및 PDF 리포트 발송을 진행합니다...")
+        print("📲 [--telegram] 옵션 활성화: 매수신호 A 종목 텔레그램 알림 및 PDF 리포트 발송을 진행합니다...")
         print("=" * 90)
         success, tg_desc = send_telegram_notification(args.bot_token, args.chat_id, target_date=args.date, send_pdf=args.pdf)
         telegram_status_msg = f"{'성공' if success else '실패/경고'} ({tg_desc})"

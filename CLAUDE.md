@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 프로젝트 상태
 
-stockNaverEtf는 **운영 중인 종목 선별기**다. 네이버 증권 API로 국내 주식형 ETF 상위 구성종목(약 500개)을 매일 수집해 외국인·기관 수급과 이동평균선으로 투자등급(A+/A/B/C)을 매기고, 리포트·대시보드·텔레그램으로 전달한다. 전체 구조와 요구사항은 `docs/PRD.md`, 실행 방법은 `README.md`에 있다.
+stockNaverEtf는 **운영 중인 종목 선별기**다. 네이버 증권 API로 국내 주식형 ETF 상위 구성종목(약 500개)을 매일 수집해 섹터 순위, 주도주, 매수신호(A/B/C)를 계산하고, 리포트·대시보드·텔레그램으로 전달한다. 외국인·기관 수급 수집과 투자등급(A+/A/B/C)은 2026-10-10에 없앴다(검증에서 등급 순서가 수익률과 맞지 않았다). 전체 구조와 요구사항은 `docs/PRD.md`, 실행 방법은 `README.md`에 있다.
 
 2026-10-10에 기획 프로젝트 stockTalk을 여기로 합쳤다. 목표는 "사용자의 매매 전략(추세추종 + 종가매매, 1~2주 보유)에 맞는 종목을 매일 골라주는 도구"이고, 지금은 **종목선정 기준을 검증하는 브레인스토밍 단계**다.
 
@@ -14,7 +14,6 @@ stockNaverEtf는 **운영 중인 종목 선별기**다. 네이버 증권 API로 
 | `docs/stockTalk/brainstorming.md` | 확정된 매수·매도 조건, 진행 현황, 결정 사항 로그 |
 | `docs/stockTalk/talk.md` | 사용자와의 대화 원문 |
 | `docs/stockTalk/PRD.md` | 추세추종 백테스터 MVP 범위(초안). 이 저장소의 `docs/PRD.md`와는 다른 문서 |
-| `docs/추세추종.md` | 기존 매매 가이드. stockTalk 확정 규칙과 다른 부분이 있다 (`docs/종목선정_검증.md` 5번 참고) |
 
 ## 명령
 
@@ -24,11 +23,13 @@ Python 표준 라이브러리만 쓴다. `pip install`이 필요 없다. 테스�
 |---|---|
 | `python3 main.py` | 대화형 메뉴로 실행 |
 | `python3 main.py --all` | 1~5단계 전체 실행 (최초 구축) |
-| `python3 main.py --step 4,5` | 수급·이평선 분석과 리포트만 (매일 장 마감 후) |
-| `python3 getEtfInvestorFlow.py` | 4단계(등급 산출)만 단독 실행 |
+| `python3 main.py --step 4,5` | 일봉 분석과 리포트만 (매일 장 마감 후) |
+| `python3 getEtfInvestorFlow.py` | 4단계(일봉 분석: 이평선, 매수신호, 추세 통과)만 단독 실행 |
+| `python3 virtualTrade.py --date YYYYMMDD` | 가상 주식거래 장부에 하루치 기록 (`main.py`가 4·5단계 뒤에 자동 실행) |
 | `python3 getStockHistory.py --all --index` | 검증용 과거 일봉·수급을 `stockdata/`에 수집 (약 20분, git 제외) |
 | `python3 checkSignalReturns.py` | 검증: 조건별 5·10일 뒤 수익률 |
 | `python3 backtestTrendRules.py` | 검증: 매수 조건 × 매도 규칙 백테스트 |
+| `python3 backtestEntryRules.py` | 검증: 가상 거래의 매수 대상 기준 비교 (`docs/종목선정_검증.md` 14번) |
 
 ## 아키텍처
 
@@ -39,15 +40,20 @@ Python 표준 라이브러리만 쓴다. `pip install`이 필요 없다. 테스�
 | 1 | `getEtfList.py` | ETF 목록 (`data/etf_list.csv`) |
 | 2 | `getEtfDtlList.py` | ETF 상위 구성종목 |
 | 3 | `getEtfTopStockList.py` | 주도주 종목코드 (`data/etf_top_stocks.csv`) |
-| 4 | `getEtfInvestorFlow.py` | 수급·이평선 분석, 등급 (`reports/report_YYYYMMDD.csv`) |
-| 5 | `getEtfAiReport.py` | 마크다운/PDF 리포트 |
+| 4 | `getEtfInvestorFlow.py` | 이평선, 매수신호, 추세 통과 (`reports/report_YYYYMMDD.csv`) |
+| 5 | `getEtfAiReport.py` | 마크다운/PDF 리포트 (매수신호 A, 섹터 순위, 주도주) |
 
-등급 기준은 `getEtfInvestorFlow.py`의 `calculate_grade`에 있다. 리포트의 `매수신호`(A/B/C) 열은 검증 중인 후보 규칙이며 `buySignal.py`에 정의한다. 대시보드는 `index.html`, `app.js`, `style.css`(정적 페이지, GitHub Pages)다.
+리포트의 `매수신호`(A/B/C) 열은 검증 중인 후보 규칙(A = 강한 마감 + 추세 통과)이며 `buySignal.py`에 정의한다. 2026-10-10에 정배열 대신 추세 통과로 바꿨다(`docs/종목선정_검증.md` 14번). 대시보드는 `index.html`, `app.js`, `style.css`(정적 페이지, GitHub Pages)다.
+
+종목의 시장(코스피/코스닥)과 섹터는 `data/stock_sectors.csv`에서 읽는다(네이버 업종을 15개 섹터로 묶은 것, `분류기준`이 "수동"인 줄은 손으로 고친 것). 이 파일을 만드는 스크립트는 저장소에 없으므로 3단계로 대상 종목이 바뀌면 다시 만들어야 한다. 대시보드의 "섹터별 종목조회"와 "주도주" 화면은 리포트의 `추세통과`·`3개월수익률`·`고점대비`·`강한마감` 열로 섹터 순위를 매기며, 이 기준(`buySignal.py`의 `judge_trend`)은 과거 데이터로 검증하지 않았다. 섹터 순위 계산은 `app.js`의 `buildSectorRanking`과 `getEtfAiReport.py`의 `rank_sectors` 두 곳에 있으므로 기준을 바꿀 때는 함께 고친다.
+
+`virtualTrade.py`는 모의 포워드 테스트다. 매수신호 A인 종목을 그날 종가에 100만 원어치 샀다고 치고, 종가가 손절가(보유 중 최고 종가 -5%) 이하인 날 종가에 팔았다고 쳐서 `reports/virtual_trades.csv`에 날짜별·종목별로 쌓는다. 날짜 순서대로 실행해야 하고, 같은 날짜를 다시 돌리면 그날 기록만 새로 쓴다. 대시보드의 "가상 주식거래 리포트" 화면이 이 파일을 읽는다.
 
 ## 주의: 자동 푸시와 공개 저장소
 
 - 이 저장소는 **공개**다. `main.py --push-git`(cron 16:05)이 `git add -A` 후 커밋·푸시한다. 폴더에 넣은 파일은 다음 자동 실행 때 그대로 공개된다.
 - 보유 종목, 계좌, 금액 같은 개인 정보와 API 키는 추적되는 파일에 쓰지 않는다. 키는 `.env`에만 둔다.
+- `reports/virtual_trades.csv`는 가상 거래 장부라서 공개된다. 실제 매매 내역을 이 파일에 섞어 쓰지 않는다.
 
 ## 역할
 

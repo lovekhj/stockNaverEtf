@@ -17,9 +17,7 @@ let allStockData = [];
 let filteredStockData = [];
 // 리포트 날짜 목록: main.py 실행 시 자동 생성되는 reports/available_dates.js (window.AVAILABLE_DATES)
 let availableDates = Array.isArray(window.AVAILABLE_DATES) ? [...window.AVAILABLE_DATES] : [];
-let sortedAvailableDates = [...availableDates].sort((a, b) => b.localeCompare(a));
 let currentDate = getTodayDateStr();
-let stockHistoryCache = {}; // { dateStr: { code: gradeStr } }
 
 // 차트 꼬리 분류 (getEtfInvestorFlow.py 의 classify_candle 이 만드는 값과 같아야 한다)
 const CANDLE_TYPES = [
@@ -33,25 +31,23 @@ const CANDLE_TYPES = [
 ];
 
 // Filter States - Defaults: 모든 필터 "전체"
-const DEFAULT_GRADE_FILTER = "ALL";
 const DEFAULT_SIGNAL_FILTER = "ALL";
 const DEFAULT_CANDLE_FILTER = CANDLE_TYPES.map(c => c.id);
-const DEFAULT_OVERHEAT_FILTER = "ALL";
 
-let currentGradeFilter = DEFAULT_GRADE_FILTER;
 let currentSignalFilter = DEFAULT_SIGNAL_FILTER;
 let currentCandleFilter = [...DEFAULT_CANDLE_FILTER];
-let currentOverheatFilter = DEFAULT_OVERHEAT_FILTER;
-let currentSectorFilter = "ALL";
-let currentAlignFilter = "ALL";
 let currentSearchQuery = "";
+let selectedSector = null; // 섹터별 종목조회 화면에서 고른 섹터
+let lastListView = "sector"; // 종목 상세나 날짜 선택 뒤에 돌아갈 목록 화면 (sector, leaders, dashboard, virtual)
+let virtualTrades = [];      // 가상 주식거래 장부 (reports/virtual_trades.csv) 전체
+let selectedVirtualCode = null; // 가상 주식거래 화면에서 일별 기록을 보려고 고른 종목
 
 // Pagination State
 let currentPage = 1;
 const pageSize = 25;
 
 // Table Sort State
-let sortKey = "투자등급";
+let sortKey = "매수신호";
 let sortAsc = true;
 
 // Initialize Dashboard App
@@ -66,68 +62,11 @@ document.addEventListener("DOMContentLoaded", () => {
   } else {
     currentDate = latestVerified;
   }
-  latestValidDate = currentDate;
 
-  initDatePickers(currentDate);
   loadDateExplorer();
-  loadDashboardData(currentDate, true);
-  buildStockHistoryCache();
+  loadDashboardData(currentDate);
+  loadVirtualTrades();
 });
-
-function buildStockHistoryCache() {
-  availableDates.forEach(dateStr => {
-    fetch(`reports/report_${dateStr}.csv`)
-      .then(res => res.text())
-      .then(csvText => {
-        Papa.parse(csvText, {
-          header: true,
-          skipEmptyLines: true,
-          transformHeader: h => h.replace(/^\ufeff/, '').trim(),
-          complete: function(results) {
-            if (results.data) {
-              stockHistoryCache[dateStr] = {};
-              results.data.forEach(item => {
-                if (item.종목코드) {
-                  stockHistoryCache[dateStr][item.종목코드] = item.투자등급;
-                }
-              });
-            }
-          }
-        });
-      })
-      .catch(() => {});
-  });
-}
-
-/**
- * 0. 달력(Date Picker) 초기화 및 날짜 변경 핸들러
- */
-function initDatePickers(dateStr) {
-  if (!dateStr || dateStr.length !== 8) return;
-  const yyyy = dateStr.slice(0, 4);
-  const mm = dateStr.slice(4, 6);
-  const dd = dateStr.slice(6, 8);
-  const val = `${yyyy}-${mm}-${dd}`;
-
-  const lnbPicker = document.getElementById("datePickerInput");
-  const hdrPicker = document.getElementById("reportHeaderDatePicker");
-  if (lnbPicker) lnbPicker.value = val;
-  if (hdrPicker) hdrPicker.value = val;
-}
-
-function handleDatePickerChange(dateVal) {
-  if (!dateVal) return;
-  const dateStr = dateVal.replace(/-/g, '');
-  currentDate = dateStr;
-
-  initDatePickers(dateStr);
-  loadDashboardData(dateStr);
-
-  const reportView = document.getElementById("viewReport");
-  if (reportView && reportView.classList.contains("active")) {
-    selectDateReport(dateStr);
-  }
-}
 
 /**
  * 2. 인터랙티브 년/월 그리드 달력 위젯 (Calendar Widget)
@@ -256,42 +195,10 @@ function renderCalendarGrid() {
 
 function onCalendarDayClick(dateStr) {
   currentDate = dateStr;
-  initDatePickers(dateStr);
-  switchView('dashboard');
+  renderVirtualView();
+  switchView(lastListView);
   loadDashboardData(dateStr);
   renderCalendarGrid();
-}
-
-let latestValidDate = "20261007";
-let modalCloseCallback = null;
-
-/**
- * 커스텀 모달 알림창 띄우기
- */
-function showCustomModal(title, text, onClose) {
-  const overlay = document.getElementById("customModalOverlay");
-  const titleEl = document.getElementById("modalTitle");
-  const bodyEl = document.getElementById("modalBodyText");
-  const closeBtn = document.getElementById("btnModalClose");
-
-  if (titleEl) titleEl.innerText = title;
-  if (bodyEl) bodyEl.innerHTML = text;
-
-  modalCloseCallback = onClose;
-
-  if (overlay) overlay.classList.add("active");
-  if (closeBtn) closeBtn.focus();
-}
-
-function closeCustomModal() {
-  const overlay = document.getElementById("customModalOverlay");
-  if (overlay) overlay.classList.remove("active");
-
-  if (typeof modalCloseCallback === "function") {
-    const cb = modalCloseCallback;
-    modalCloseCallback = null;
-    cb();
-  }
 }
 
 /**
@@ -375,15 +282,15 @@ function renderEmptyDashboard(dateStr) {
   const totalStocksBadge = document.getElementById("totalStocksBadgeCount");
   if (totalStocksBadge) totalStocksBadge.innerText = "0";
 
-  renderKPIs();
-  renderSectorGrid();
-  populateSectorSelectFilter();
+  updateFilterCounts();
+  renderSectorView();
+  renderLeadersView();
 
   const tbody = document.getElementById("tableBody");
   if (tbody) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="19" style="text-align: center; padding: 3.5rem 1rem; color: var(--text-muted); font-size: 0.95rem;">
+        <td colspan="12" style="text-align: center; padding: 3.5rem 1rem; color: var(--text-muted); font-size: 0.95rem;">
           <i class="fa-solid fa-calendar-xmark" style="font-size: 2.5rem; margin-bottom: 0.8rem; display: block; color: var(--text-dim);"></i>
           <strong style="color: var(--text-main); font-size: 1.05rem; display: block; margin-bottom: 0.3rem;">
             ${formattedDate} 데이터가 존재하지 않습니다.
@@ -405,7 +312,7 @@ function renderEmptyDashboard(dateStr) {
 /**
  * 3. 메인 CSV 분석 데이터 파싱 및 로드 (`reports/report_YYYYMMDD.csv`)
  */
-function loadDashboardData(dateStr, isInitialLoad = false) {
+function loadDashboardData(dateStr) {
   const csvPath = `reports/report_${dateStr}.csv`;
 
   fetchLocalFile(csvPath)
@@ -427,21 +334,11 @@ function loadDashboardData(dateStr, isInitialLoad = false) {
           }).filter(row => row.종목코드 || row.종목명);
 
           if (cleanData.length > 0) {
-            latestValidDate = dateStr;
             currentDate = dateStr;
             if (!availableDates.includes(dateStr)) {
               availableDates.push(dateStr);
-              sortedAvailableDates = [...availableDates].sort((a, b) => b.localeCompare(a));
             }
             allStockData = cleanData.map(item => {
-              const parseSeq = (val) => {
-                if (val === undefined || val === null || val === "") return 0;
-                const num = parseInt(String(val).replace(/[^0-9]/g, ''), 10);
-                return isNaN(num) ? 0 : num;
-              };
-              const fSeq = parseSeq(item["외국인연속매수(일)"] || item["외국인연속매수"] || item["외국인연속"]);
-              const iSeq = parseSeq(item["기관연속매수(일)"] || item["기관연속매수"] || item["기관연속"]);
-
               // 차트 꼬리: CSV에 값이 있을 때만 쓰고, 없으면 null (임의로 만들어 넣지 않는다)
               const rawCandle = item.차트꼬리 || item.캔들모양 || item.차트패턴;
               const candleShape = (rawCandle && rawCandle.trim() !== "-") ? rawCandle.trim() : null;
@@ -450,21 +347,10 @@ function loadDashboardData(dateStr, isInitialLoad = false) {
                 ...item,
                 종목코드: item.종목코드 ? item.종목코드.trim() : "",
                 종목명: item.종목명 ? item.종목명.trim() : "",
-                섹터: item.섹터 ? item.섹터.trim() : "일반 주도주",
-                투자등급: item.투자등급 ? item.투자등급.trim() : "C",
-                등급변동: item.등급변동 ? item.등급변동.trim() : "-",
-                변동이유: item.변동이유 ? item.변동이유.trim() : "-",
+                섹터: item.섹터 ? item.섹터.trim() : "-",
                 차트꼬리: candleShape,
                 등락률: (item.등락률 || "0.00%").trim().replace(/^--/, "-"),
                 현재가: item.현재가 ? item.현재가.trim() : "0",
-                쌍끌이여부: item.쌍끌이여부 ? item.쌍끌이여부.trim() : "X",
-                정배열여부: item.정배열여부 ? item.정배열여부.trim() : "X",
-                "20일선위": item["20일선위"] ? item["20일선위"].trim() : "X",
-                외국인연속: fSeq,
-                기관연속: iSeq,
-                외국인연속매수: fSeq,
-                기관연속매수: iSeq,
-                외국인보유율: item.외국인보유율 ? item.외국인보유율.trim() : "0.0%",
                 상세페이지: item.상세페이지 ? item.상세페이지.trim() : "#"
               };
             });
@@ -478,10 +364,10 @@ function loadDashboardData(dateStr, isInitialLoad = false) {
             if (elTotalBadge) elTotalBadge.innerText = allStockData.length.toLocaleString();
 
             // UI 영역 업데이트
-            renderKPIs();
-            renderSectorGrid();
-            populateSectorSelectFilter();
+            updateFilterCounts();
             applyFiltersAndRenderTable();
+            renderSectorView();
+            renderLeadersView();
             renderCalendarGrid();
           } else {
             renderEmptyDashboard(dateStr);
@@ -498,75 +384,10 @@ function loadDashboardData(dateStr, isInitialLoad = false) {
 }
 
 /**
- * 4. 핵심 KPI 카드 요약 통계 계산 및 화면 표시
- */
-function renderKPIs() {
-  const total = allStockData.length;
-  const aplusList = allStockData.filter(d => d.투자등급 === "A+");
-  const aList = allStockData.filter(d => d.투자등급 === "A");
-  const dualList = allStockData.filter(d => d.쌍끌이여부 === "O");
-  const upgradedList = allStockData.filter(d => d.등급변동.includes("상향"));
-
-  const elTotal = document.getElementById("kpiTotalCount");
-  if (elTotal) elTotal.innerText = `${total.toLocaleString()}개`;
-  
-  const aplusRatio = total > 0 ? ((aplusList.length / total) * 100).toFixed(1) : "0.0";
-  const elAplusCount = document.getElementById("kpiAplusCount");
-  if (elAplusCount) elAplusCount.innerText = `${aplusList.length}개`;
-  const elAplusRatio = document.getElementById("kpiAplusRatio");
-  if (elAplusRatio) elAplusRatio.innerText = `비율 ${aplusRatio}%`;
-
-  const aRatio = total > 0 ? ((aList.length / total) * 100).toFixed(1) : "0.0";
-  const elACount = document.getElementById("kpiACount");
-  if (elACount) elACount.innerText = `${aList.length}개`;
-  const elARatio = document.getElementById("kpiARatio");
-  if (elARatio) elARatio.innerText = `비율 ${aRatio}%`;
-
-  const dualRatio = total > 0 ? ((dualList.length / total) * 100).toFixed(1) : "0.0";
-  const elDualCount = document.getElementById("kpiDualCount");
-  if (elDualCount) elDualCount.innerText = `${dualList.length}개`;
-  const elDualRatio = document.getElementById("kpiDualRatio");
-  if (elDualRatio) elDualRatio.innerText = `비율 ${dualRatio}%`;
-
-  const elUpgradedCount = document.getElementById("kpiUpgradedCount");
-  if (elUpgradedCount) elUpgradedCount.innerText = `${upgradedList.length}개`;
-
-  // LNB 퀵 카운터 파필
-  const elQAp = document.getElementById("quickCountAplus");
-  if (elQAp) elQAp.innerText = aplusList.length;
-  const elQA = document.getElementById("quickCountA");
-  if (elQA) elQA.innerText = aList.length;
-  const elQUp = document.getElementById("quickCountUpgraded");
-  if (elQUp) elQUp.innerText = upgradedList.length;
-
-  updateFilterCounts();
-}
-
-/**
- * 4-1. 필터 콤보박스(등급 / 캔들 / 과열) 옵션별 실시간 개수 갱신
+ * 4-1. 필터 콤보박스(매수신호 / 캔들) 옵션별 실시간 개수 갱신
  */
 function updateFilterCounts() {
   const total = allStockData.length;
-  const aplusList = allStockData.filter(d => d.투자등급 === "A+");
-  const aList = allStockData.filter(d => d.투자등급 === "A");
-
-  // Update Grade Select Combobox Options with Live Counts
-  const bList = allStockData.filter(d => d.투자등급 === "B");
-  const cList = allStockData.filter(d => d.투자등급 === "C");
-
-  const gradeSelect = document.getElementById("gradeSelectFilter");
-  if (gradeSelect) {
-    const curVal = currentGradeFilter;
-    gradeSelect.innerHTML = `
-      <option value="ALL">전체 보기 (${total.toLocaleString()}개)</option>
-      <option value="A+">🔥 A+ 최상위주 (${aplusList.length.toLocaleString()}개)</option>
-      <option value="A">⭐ A 우량 수급주 (${aList.length.toLocaleString()}개)</option>
-      <option value="B">🟡 B 일반 수급주 (${bList.length.toLocaleString()}개)</option>
-      <option value="C">⚪ C 미달/관망주 (${cList.length.toLocaleString()}개)</option>
-    `;
-    gradeSelect.value = curVal;
-  }
-
   // Update Buy Signal Select Combobox Options with Live Counts
   const signalSelect = document.getElementById("signalSelectFilter");
   if (signalSelect) {
@@ -627,93 +448,303 @@ function updateFilterCounts() {
     }
   }
 
-  // Update Overheat Select Combobox Options with Live Counts
-  const overheatSelect = document.getElementById("overheatSelectFilter");
-  if (overheatSelect) {
-    const normalCount = allStockData.filter(d => (d.과열여부 || "").includes("적정") || (!(d.과열여부 || "").includes("과열") && !(d.과열여부 || "").includes("이격"))).length;
-    const riseCount = allStockData.filter(d => (d.과열여부 || "").includes("상승과열")).length;
-    const shortOverheatCount = allStockData.filter(d => (d.과열여부 || "").includes("단기과열")).length;
-    const gapOverheatCount = allStockData.filter(d => (d.과열여부 || "").includes("이격과도")).length;
-
-    const curOverheatVal = currentOverheatFilter;
-    overheatSelect.innerHTML = `
-      <option value="ALL">전체 과열 판정 (${total.toLocaleString()}개)</option>
-      <option value="적정">🟢 적정 (안전) (${normalCount.toLocaleString()}개)</option>
-      <option value="상승과열">🟡 상승과열 (${riseCount.toLocaleString()}개)</option>
-      <option value="단기과열">🔴 단기과열 (${shortOverheatCount.toLocaleString()}개)</option>
-      <option value="이격과도">🔵 이격과도 (${gapOverheatCount.toLocaleString()}개)</option>
-    `;
-    overheatSelect.value = curOverheatVal;
-  }
 }
 
 /**
- * 5. 주요 섹터/테마별 카드 그리드 생성
+ * 6. 섹터별 종목조회: 섹터 순위 표와 선택한 섹터의 종목 표
+ *    통과 여부·3개월 상승률·강한 마감은 4단계(getEtfInvestorFlow.py)가 리포트 CSV에 넣은 값을 그대로 쓴다
  */
-function renderSectorGrid() {
-  const container = document.getElementById("sectorGrid");
-  if (!container) return;
-  container.innerHTML = "";
+function parsePercent(text) {
+  const num = parseFloat(String(text || "").replace("%", ""));
+  return isNaN(num) ? null : num;
+}
 
-  const sectorCounts = {};
+function formatSignedPercent(value) {
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function percentColor(value) {
+  if (value === null || value === 0) return "var(--text-main)";
+  return value > 0 ? "#ef4444" : "#3b82f6";
+}
+
+function buildSectorRanking() {
+  const sectors = {};
   allStockData.forEach(d => {
-    const sec = d.섹터 || "일반 주도주";
-    if (!sectorCounts[sec]) {
-      sectorCounts[sec] = { total: 0, aplus: 0, a: 0 };
+    if (!sectors[d.섹터]) sectors[d.섹터] = { name: d.섹터, total: 0, passed: [], signals: 0 };
+    const sec = sectors[d.섹터];
+    sec.total++;
+    if (d.추세통과 === "O") {
+      sec.passed.push(parsePercent(d["3개월수익률"]) || 0);
+      if (d.강한마감 === "O") sec.signals++;
     }
-    sectorCounts[sec].total++;
-    if (d.투자등급 === "A+") sectorCounts[sec].aplus++;
-    if (d.투자등급 === "A") sectorCounts[sec].a++;
   });
 
-  // 섹터 모멘텀 점수(A+ * 3.0 + A * 1.0) 순으로 정렬하여 주도 섹터 하이라이트
-  const sortedSectors = Object.entries(sectorCounts).sort((a, b) => {
-    const scoreA = (a[1].aplus * 3.0) + (a[1].a * 1.0) + (a[1].total * 0.01);
-    const scoreB = (b[1].aplus * 3.0) + (b[1].a * 1.0) + (b[1].total * 0.01);
-    return scoreB - scoreA;
-  });
+  return Object.values(sectors).map(sec => {
+    const sorted = [...sec.passed].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length === 0 ? null
+      : (sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2);
+    return { ...sec, passCount: sorted.length, passRatio: sorted.length / sec.total, median };
+  }).sort((a, b) => (b.passCount - a.passCount) || (b.passRatio - a.passRatio) || a.name.localeCompare(b.name));
+}
 
-  sortedSectors.forEach(([secName, counts], idx) => {
-    const card = document.createElement("div");
-    card.className = "sector-card";
-    if (idx < 3) {
-      card.style.borderColor = "var(--color-gold, #f59e0b)";
-      card.style.boxShadow = "0 0 12px rgba(245, 158, 11, 0.15)";
-    }
-    card.onclick = () => filterBySectorCard(secName);
-    
-    const rankBadge = idx === 0 ? "🥇 1위 주도섹터" : (idx === 1 ? "🥈 2위 주도섹터" : (idx === 2 ? "🥉 3위 주도섹터" : ""));
-    const rankHtml = rankBadge ? `<span style="font-size:0.75rem; font-weight:700; color:#f59e0b; margin-bottom:4px; display:block;">${rankBadge}</span>` : "";
+function renderSectorView() {
+  const rankBody = document.getElementById("sectorRankBody");
+  const stockBody = document.getElementById("sectorStockBody");
+  if (!rankBody || !stockBody) return;
 
-    card.innerHTML = `
-      ${rankHtml}
-      <div class="sector-card-top">
-        <span class="sector-name" style="font-weight:700;">${secName}</span>
-        <span class="sector-total-badge">${counts.total}개 종목</span>
-      </div>
-      <div class="sector-pills" style="margin-top:6px;">
-        <div class="sector-pill-item aplus" style="font-weight:600;">🔥 A+ ${counts.aplus}개</div>
-        <div class="sector-pill-item a" style="font-weight:600;">⭐ A ${counts.a}개</div>
-      </div>
+  // 추세통과 열이 없는 예전 리포트
+  if (!allStockData.some(d => d.추세통과 === "O" || d.추세통과 === "X")) {
+    rankBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-dim);">이 날짜의 리포트에는 섹터 통계가 없습니다.</td></tr>`;
+    stockBody.innerHTML = "";
+    document.getElementById("sectorStockTitle").innerText = "섹터 종목";
+    return;
+  }
+
+  const ranking = buildSectorRanking();
+  if (!ranking.some(sec => sec.name === selectedSector)) selectedSector = ranking[0].name;
+
+  rankBody.innerHTML = "";
+  ranking.forEach((sec, idx) => {
+    const tr = document.createElement("tr");
+    if (sec.name === selectedSector) tr.className = "sector-row-selected";
+    tr.onclick = () => { selectedSector = sec.name; renderSectorView(); };
+    tr.innerHTML = `
+      <td>${idx + 1}</td>
+      <td><strong>${sec.name}</strong></td>
+      <td><strong>${sec.passCount}</strong></td>
+      <td>${sec.total}</td>
+      <td>${(sec.passRatio * 100).toFixed(0)}%</td>
+      <td>${sec.median === null ? "-" : `<strong style="color: ${percentColor(sec.median)};">${formatSignedPercent(sec.median)}</strong>`}</td>
+      <td>${sec.signals > 0 ? `★ ${sec.signals}` : "-"}</td>
     `;
-    container.appendChild(card);
+    rankBody.appendChild(tr);
   });
+
+  renderSectorStocks();
+}
+
+function renderSectorStocks() {
+  const stockBody = document.getElementById("sectorStockBody");
+  const rows = allStockData.filter(d => d.섹터 === selectedSector).sort((a, b) => {
+    const passDiff = (b.추세통과 === "O") - (a.추세통과 === "O");
+    if (passDiff) return passDiff;
+    return (parsePercent(b["3개월수익률"]) ?? -Infinity) - (parsePercent(a["3개월수익률"]) ?? -Infinity);
+  });
+
+  const passCount = rows.filter(d => d.추세통과 === "O").length;
+  document.getElementById("sectorStockTitle").innerText = `${selectedSector} (통과 ${passCount}개 / 전체 ${rows.length}개)`;
+
+  stockBody.innerHTML = "";
+  rows.forEach((row, idx) => stockBody.appendChild(buildSectorStockRow(row, idx + 1, true)));
 }
 
 /**
- * 7. 드롭다운 필터 옵션 동적 생성
+ * 섹터 종목 표와 주도주 표가 함께 쓰는 한 줄. showPass 가 false 면 통과 칸을 뺀다 (주도주는 모두 통과 종목)
  */
-function populateSectorSelectFilter() {
-  const select = document.getElementById("sectorSelectFilter");
-  if (!select) return;
-  select.innerHTML = '<option value="ALL">전체 섹터 보기</option>';
+function buildSectorStockRow(row, rank, showPass) {
+    const ret3m = parsePercent(row["3개월수익률"]);
+    const fromHigh = parsePercent(row.고점대비);
+    const rateVal = row.등락률 || "0.00%";
 
-  const sectors = [...new Set(allStockData.map(d => d.섹터))].filter(Boolean).sort();
-  sectors.forEach(sec => {
-    const opt = document.createElement("option");
-    opt.value = sec;
-    opt.innerText = sec;
-    select.appendChild(opt);
+    const buySignal = row.매수신호 || "-";
+    let buySignalClass = "signal-none";
+    if (buySignal.startsWith("A")) buySignalClass = "signal-buy";
+    else if (buySignal.startsWith("B")) buySignalClass = "signal-review";
+    else if (buySignal.startsWith("C")) buySignalClass = "signal-avoid";
+
+    const tr = document.createElement("tr");
+    if (row.추세통과 !== "O") tr.className = "sector-stock-failed";
+    tr.innerHTML = `
+      <td>${rank}</td>
+      <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목코드}</code></td>
+      <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
+      <td>${row.시장 || "-"}</td>
+      ${showPass ? `<td>${row.추세통과 === "O" ? "🟢 O" : (row.추세통과 === "X" ? "🔴 X" : "-")}</td>` : ""}
+      <td><strong style="color: ${percentColor(ret3m)};">${row["3개월수익률"] || "-"}</strong></td>
+      <td>${fromHigh === null ? "-" : formatSignedPercent(fromHigh)}</td>
+      <td>${row.강한마감 === "O" ? '<strong class="sector-star">★</strong>' : "-"}</td>
+      <td><strong>${row.현재가}원</strong></td>
+      <td><strong style="color: ${percentColor(parsePercent(rateVal))};">${rateVal}</strong></td>
+      <td title="${row.매수신호사유 || ""}"><span class="badge-signal ${buySignalClass}">${buySignal}</span></td>
+      <td><a href="${row.상세페이지}" target="_blank" class="link-naver">네이버 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.75rem;"></i></a></td>
+    `;
+    return tr;
+}
+
+/**
+ * 6-1. 주도주: 순위가 높은 섹터부터, 통과 종목을 3개월 상승률이 큰 순서로 보여 준다
+ */
+function renderLeadersView() {
+  const body = document.getElementById("leaderBody");
+  if (!body) return;
+  const countEl = document.getElementById("leaderCount");
+  body.innerHTML = "";
+  countEl.innerText = "0";
+
+  // 추세통과 열이 없는 예전 리포트
+  if (!allStockData.some(d => d.추세통과 === "O" || d.추세통과 === "X")) {
+    body.innerHTML = `<tr><td colspan="11" style="text-align: center; padding: 2rem; color: var(--text-dim);">이 날짜의 리포트에는 섹터 통계가 없습니다.</td></tr>`;
+    return;
+  }
+
+  const sectorLimit = document.getElementById("leaderSectorCount").value;
+  const stockLimit = parseInt(document.getElementById("leaderStockCount").value, 10);
+  const market = document.getElementById("leaderMarket").value;
+
+  // 섹터 순위는 시장 선택과 관계없이 전체 종목으로 매긴다
+  let ranking = buildSectorRanking().map((sec, idx) => ({ ...sec, rank: idx + 1 })).filter(sec => sec.passCount > 0);
+  if (sectorLimit !== "ALL") ranking = ranking.slice(0, parseInt(sectorLimit, 10));
+
+  let total = 0;
+  ranking.forEach(sec => {
+    const leaders = allStockData
+      .filter(d => d.섹터 === sec.name && d.추세통과 === "O" && (market === "ALL" || d.시장 === market))
+      .sort((a, b) => (parsePercent(b["3개월수익률"]) ?? -Infinity) - (parsePercent(a["3개월수익률"]) ?? -Infinity))
+      .slice(0, stockLimit);
+
+    const head = document.createElement("tr");
+    head.className = "leader-sector-row";
+    head.innerHTML = `<td colspan="11"><strong>${sec.rank}위 ${sec.name}</strong> <span>통과 ${sec.passCount}개 / 전체 ${sec.total}개</span></td>`;
+    body.appendChild(head);
+
+    if (leaders.length === 0) {
+      const empty = document.createElement("tr");
+      empty.innerHTML = `<td colspan="11" style="color: var(--text-dim);">${market} 통과 종목이 없습니다.</td>`;
+      body.appendChild(empty);
+    }
+    leaders.forEach((row, idx) => body.appendChild(buildSectorStockRow(row, idx + 1, false)));
+    total += leaders.length;
+  });
+  countEl.innerText = total.toLocaleString();
+}
+
+/**
+ * 6-2. 가상 주식거래 리포트: virtualTrade.py 가 쌓는 장부(reports/virtual_trades.csv)를 날짜별로 보여 준다
+ */
+function loadVirtualTrades() {
+  fetchLocalFile("reports/virtual_trades.csv")
+    .then(csvText => {
+      Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: h => (h ? h.replace(/^\ufeff/, '').trim() : ''),
+        complete: results => {
+          virtualTrades = (results.data || []).filter(row => row.날짜 && row.종목코드);
+          renderVirtualView();
+        }
+      });
+    })
+    .catch(() => { virtualTrades = []; renderVirtualView(); });
+}
+
+function formatWon(value) {
+  return `${Math.round(value).toLocaleString()}원`;
+}
+
+function formatSignedWon(value) {
+  return `${value > 0 ? "+" : ""}${Math.round(value).toLocaleString()}원`;
+}
+
+function virtualStatusBadge(status) {
+  const badgeClass = { "매수": "signal-buy", "보유": "signal-review", "매도": "signal-avoid" }[status] || "signal-none";
+  return `<span class="badge-signal ${badgeClass}">${status}</span>`;
+}
+
+function renderVirtualView() {
+  const body = document.getElementById("virtualBody");
+  if (!body) return;
+
+  const dateLabel = `${currentDate.slice(0, 4)}-${currentDate.slice(4, 6)}-${currentDate.slice(6, 8)}`;
+  document.getElementById("virtualDateText").innerText = `(${dateLabel})`;
+
+  const rows = virtualTrades.filter(row => row.날짜 === currentDate);
+  const holding = rows.filter(row => row.상태 !== "매도");
+  const soldUntilToday = virtualTrades.filter(row => row.상태 === "매도" && row.날짜 <= currentDate);
+  const num = text => Number(text) || 0;
+
+  const cost = holding.reduce((sum, row) => sum + num(row.매수가) * num(row.수량), 0);
+  const value = holding.reduce((sum, row) => sum + num(row.평가금액), 0);
+  const realized = soldUntilToday.reduce((sum, row) => sum + num(row.손익), 0);
+  const countOf = status => rows.filter(row => row.상태 === status).length;
+
+  const setText = (id, text, colorValue) => {
+    const el = document.getElementById(id);
+    el.innerText = text;
+    el.style.color = colorValue === undefined ? "" : percentColor(colorValue);
+  };
+  setText("virtualHoldCount", rows.length ? `${holding.length}개` : "-");
+  setText("virtualTodayTrades", `오늘 매수 ${countOf("매수")}건 · 매도 ${countOf("매도")}건`);
+  setText("virtualCost", rows.length ? formatWon(cost) : "-");
+  setText("virtualValue", `평가금액 ${formatWon(value)}`);
+  setText("virtualOpenProfit", rows.length ? formatSignedWon(value - cost) : "-", value - cost);
+  setText("virtualOpenRate", cost > 0 ? formatSignedPercent((value / cost - 1) * 100) : "-");
+  setText("virtualRealized", formatSignedWon(realized), realized);
+  setText("virtualSellCount", `매도 ${soldUntilToday.length}건 (기준일까지)`);
+
+  if (rows.length === 0) {
+    body.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 2rem; color: var(--text-dim);">이 날짜의 가상 거래 기록이 없습니다.</td></tr>`;
+  } else {
+    body.innerHTML = "";
+    rows.forEach(row => {
+      const profit = num(row.손익);
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${virtualStatusBadge(row.상태)}</td>
+        <td><code>${row.종목코드}</code></td>
+        <td><strong class="stock-name-clickable" title="이 종목의 일별 기록 보기">${row.종목명}</strong></td>
+        <td>${row.시장 || "-"}</td>
+        <td><span class="stock-sector-tag">${row.섹터 || "-"}</span></td>
+        <td>${row.수량}주</td>
+        <td>${row.매수일.slice(4, 6)}-${row.매수일.slice(6, 8)}</td>
+        <td>${formatWon(num(row.매수가))}</td>
+        <td><strong>${formatWon(num(row.종가))}</strong></td>
+        <td>${formatWon(num(row.손절가))}</td>
+        <td>${row.매도가 ? formatWon(num(row.매도가)) : "-"}</td>
+        <td>${row.상태 === "매도" ? "-" : formatWon(num(row.평가금액))}</td>
+        <td><strong style="color: ${percentColor(profit)};">${formatSignedWon(profit)}</strong></td>
+        <td><strong style="color: ${percentColor(parsePercent(row.수익률))};">${row.수익률}</strong></td>
+        <td><span style="font-size:0.82rem; color:var(--text-muted);">${row.비고 || "-"}</span></td>
+      `;
+      tr.querySelector(".stock-name-clickable").onclick = () => { selectedVirtualCode = row.종목코드; renderVirtualHistory(); };
+      body.appendChild(tr);
+    });
+  }
+  renderVirtualHistory();
+}
+
+function renderVirtualHistory() {
+  const body = document.getElementById("virtualHistoryBody");
+  const title = document.getElementById("virtualHistoryTitle");
+  const rows = virtualTrades.filter(row => row.종목코드 === selectedVirtualCode);
+  const num = text => Number(text) || 0;
+
+  if (rows.length === 0) {
+    title.innerText = "종목 일별 기록";
+    body.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 2rem; color: var(--text-dim);">위 표에서 종목명을 누르세요.</td></tr>`;
+    return;
+  }
+
+  title.innerText = `${rows[0].종목명} 일별 기록`;
+  body.innerHTML = "";
+  rows.forEach(row => {
+    const profit = num(row.손익);
+    const tr = document.createElement("tr");
+    if (row.날짜 === currentDate) tr.className = "sector-row-selected";
+    tr.innerHTML = `
+      <td>${row.날짜.slice(0, 4)}-${row.날짜.slice(4, 6)}-${row.날짜.slice(6, 8)}</td>
+      <td>${virtualStatusBadge(row.상태)}</td>
+      <td>${formatWon(num(row.매수가))}</td>
+      <td><strong>${formatWon(num(row.종가))}</strong></td>
+      <td>${formatWon(num(row.최고종가))}</td>
+      <td>${formatWon(num(row.손절가))}</td>
+      <td>${row.매도가 ? formatWon(num(row.매도가)) : "-"}</td>
+      <td><strong style="color: ${percentColor(profit)};">${formatSignedWon(profit)}</strong></td>
+      <td><strong style="color: ${percentColor(parsePercent(row.수익률))};">${row.수익률}</strong></td>
+      <td><span style="font-size:0.82rem; color:var(--text-muted);">${row.비고 || "-"}</span></td>
+    `;
+    body.appendChild(tr);
   });
 }
 
@@ -722,9 +753,6 @@ function populateSectorSelectFilter() {
  */
 function applyFiltersAndRenderTable() {
   filteredStockData = allStockData.filter(item => {
-    // 1. Grade filter
-    if (currentGradeFilter !== "ALL" && item.투자등급 !== currentGradeFilter) return false;
-
     // 1-2. Buy signal filter (매수신호 열이 없는 예전 리포트는 A/B/C 어느 것에도 해당하지 않는다)
     if (currentSignalFilter !== "ALL" && !(item.매수신호 || "").startsWith(currentSignalFilter)) return false;
 
@@ -741,16 +769,6 @@ function applyFiltersAndRenderTable() {
       }
     }
 
-    // 3. Overheat status filter
-    if (currentOverheatFilter !== "ALL") {
-      const oStr = item.과열여부 || "적정";
-      if (currentOverheatFilter === "적정") {
-        if (oStr.includes("단기과열") || oStr.includes("상승과열") || oStr.includes("이격과도")) return false;
-      } else {
-        if (!oStr.includes(currentOverheatFilter)) return false;
-      }
-    }
-    
     // 4. Search query
     if (currentSearchQuery) {
       const q = currentSearchQuery.toLowerCase();
@@ -762,54 +780,11 @@ function applyFiltersAndRenderTable() {
     return true;
   });
 
-  // Table Sort (1순위: 투자등급 A+->A->B->C, 2순위: 과열여부 적정/안전 우선)
-  const gradeRank = { "A+": 1, "A": 2, "B": 3, "C": 4 };
-  const overheatRank = (ohStr) => {
-    if (!ohStr || ohStr.includes("적정")) return 1;
-    if (ohStr.includes("이격과도")) return 2;
-    if (ohStr.includes("상승과열")) return 3;
-    if (ohStr.includes("단기과열")) return 4;
-    return 5;
-  };
-
+  // Table Sort
   filteredStockData.sort((a, b) => {
     let valA, valB;
 
-    if (sortKey === "투자등급") {
-      valA = gradeRank[a.투자등급] || 99;
-      valB = gradeRank[b.투자등급] || 99;
-      
-      // 1차: 투자등급 비교
-      if (valA !== valB) {
-        return sortAsc ? valA - valB : valB - valA;
-      }
-
-      // 2차: 과열여부 비교 (적정/안전 종목 우선 배치)
-      const oA = overheatRank(a.과열여부);
-      const oB = overheatRank(b.과열여부);
-      if (oA !== oB) {
-        return oA - oB;
-      }
-
-      // 3차: 20일이격도 비교
-      const iA = parseFloat((a["20일이격도"] || "0").replace(/%/g, "") || 0);
-      const iB = parseFloat((b["20일이격도"] || "0").replace(/%/g, "") || 0);
-      return iA - iB;
-
-    } else if (sortKey === "과열여부") {
-      valA = overheatRank(a.과열여부);
-      valB = overheatRank(b.과열여부);
-      
-      if (valA !== valB) {
-        return sortAsc ? valA - valB : valB - valA;
-      }
-
-      // 2차: 투자등급 비교
-      const gA = gradeRank[a.투자등급] || 99;
-      const gB = gradeRank[b.투자등급] || 99;
-      return gA - gB;
-
-    } else if (sortKey === "매수신호") {
+    if (sortKey === "매수신호") {
       // A(매수) -> B(재검토) -> C(매수금지) -> 신호 없음(-) 순
       const signalRank = (sig) => ({ "A": 1, "B": 2, "C": 3 }[(sig || "").charAt(0)] || 4);
       valA = signalRank(a.매수신호);
@@ -820,6 +795,9 @@ function applyFiltersAndRenderTable() {
     } else if (sortKey === "등락률") {
       valA = parseFloat((a.등락률 || "0").replace(/[+%,]/g, "") || 0);
       valB = parseFloat((b.등락률 || "0").replace(/[+%,]/g, "") || 0);
+    } else if (sortKey === "3개월수익률") {
+      valA = parsePercent(a["3개월수익률"]) ?? -Infinity;
+      valB = parsePercent(b["3개월수익률"]) ?? -Infinity;
     } else if (sortKey === "20일이격도") {
       valA = parseFloat((a["20일이격도"] || "0").replace(/%/g, "") || 0);
       valB = parseFloat((b["20일이격도"] || "0").replace(/%/g, "") || 0);
@@ -856,22 +834,13 @@ function renderTableRows() {
   const pageRows = filteredStockData.slice(startIndex, startIndex + pageSize);
 
   if (pageRows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="19" style="text-align: center; padding: 2rem; color: var(--text-dim);">검색 및 필터 조건에 부합하는 종목이 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="12" style="text-align: center; padding: 2rem; color: var(--text-dim);">검색 및 필터 조건에 부합하는 종목이 없습니다.</td></tr>`;
     return;
   }
 
   pageRows.forEach(row => {
     const tr = document.createElement("tr");
     
-    let gradeBadgeClass = "grade-c";
-    if (row.투자등급 === "A+") gradeBadgeClass = "grade-aplus";
-    else if (row.투자등급 === "A") gradeBadgeClass = "grade-a";
-    else if (row.투자등급 === "B") gradeBadgeClass = "grade-b";
-
-    const dualBadge = row.쌍끌이여부 === "O" 
-      ? '<span class="badge-dual yes">쌍끌이</span>' 
-      : '<span class="badge-dual no">-</span>';
-
     // 매수신호 (이 열이 없는 예전 리포트는 "-" 로 표시)
     const buySignal = row.매수신호 || "-";
     const buyReason = row.매수신호사유 || "";
@@ -879,16 +848,6 @@ function renderTableRows() {
     if (buySignal.startsWith("A")) buySignalClass = "signal-buy";
     else if (buySignal.startsWith("B")) buySignalClass = "signal-review";
     else if (buySignal.startsWith("C")) buySignalClass = "signal-avoid";
-
-    const overheatText = row.과열여부 || "적정(안전)";
-    let overheatBadge = '<span style="color:#10b981; font-weight:600;"><i class="fa-solid fa-shield-check"></i> 적정(안전)</span>';
-    if (overheatText.includes("단기과열")) {
-      overheatBadge = '<span style="color:#ef4444; font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> 단기과열</span>';
-    } else if (overheatText.includes("상승과열")) {
-      overheatBadge = '<span style="color:#f59e0b; font-weight:600;"><i class="fa-solid fa-fire"></i> 상승과열</span>';
-    } else if (overheatText.includes("이격과도")) {
-      overheatBadge = '<span style="color:#6366f1; font-weight:600;"><i class="fa-solid fa-arrow-trend-down"></i> 이격과도</span>';
-    }
 
     // 차트 꼬리: 4단계가 일봉으로 계산한 값. 예전 리포트처럼 값이 없으면 "-"
     const candleShape = row.차트꼬리 || "";
@@ -906,22 +865,15 @@ function renderTableRows() {
     tr.innerHTML = `
       <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
       <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
+      <td>${row.시장 || "-"}</td>
       <td><span class="stock-sector-tag">${row.섹터}</span></td>
-      <td><span class="badge-grade ${gradeBadgeClass}">${row.투자등급}</span></td>
       <td title="${buyReason}"><span class="badge-signal ${buySignalClass}">${buySignal}</span>${buyReason ? `<div class="signal-reason">${buyReason}</div>` : ""}</td>
-      <td>${row.등급변동}</td>
-      <td><span style="font-size:0.82rem; color:var(--text-muted);">${row.변동이유 || "-"}</span></td>
+      <td>${row.추세통과 === "O" ? "🟢 O" : (row.추세통과 === "X" ? "🔴 X" : "-")}</td>
+      <td><strong style="color: ${percentColor(parsePercent(row["3개월수익률"]))};">${row["3개월수익률"] || "-"}</strong></td>
       <td>${candleBadge}</td>
       <td><span class="count-pill">${row["20일이격도"] || "100.0%"}</span></td>
-      <td>${overheatBadge}</td>
-      <td><span class="stock-sector-tag" style="background: rgba(255,255,255,0.06); color: var(--text-main); font-weight: 600;">${row.추세단계 || "관망(C)"}</span></td>
       <td><strong>${row.현재가}원</strong></td>
       <td><strong style="color: ${rateColor};">${rateVal}</strong></td>
-      <td>${dualBadge}</td>
-      <td>${row.외국인연속 || row["외국인연속매수(일)"] || 0}일</td>
-      <td>${row.기관연속 || row["기관연속매수(일)"] || 0}일</td>
-      <td>${row["20일선위"] === "O" ? "🟢 O" : "🔴 X"}</td>
-      <td>${row.정배열여부 === "O" ? "🟢 O" : "🔴 X"}</td>
       <td><a href="${row.상세페이지}" target="_blank" class="link-naver">네이버 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.75rem;"></i></a></td>
     `;
     tbody.appendChild(tr);
@@ -954,35 +906,6 @@ function renderPagination() {
 /**
  * 11. 이벤트 핸들러 함수들
  */
-function setGradeFilter(grade) {
-  currentGradeFilter = grade;
-  currentPage = 1;
-
-  document.querySelectorAll("#gradeFilterTabs .filter-tab").forEach(tab => {
-    tab.classList.toggle("active", tab.dataset.grade === grade);
-  });
-
-  applyFiltersAndRenderTable();
-}
-
-function setGradeFilter(grade) {
-  currentGradeFilter = grade;
-  currentPage = 1;
-
-  const select = document.getElementById("gradeSelectFilter");
-  if (select) select.value = grade;
-
-  applyFiltersAndRenderTable();
-}
-
-function handleGradeSelectChange() {
-  const select = document.getElementById("gradeSelectFilter");
-  if (!select) return;
-  currentGradeFilter = select.value;
-  currentPage = 1;
-  applyFiltersAndRenderTable();
-}
-
 function handleSignalSelectChange() {
   const select = document.getElementById("signalSelectFilter");
   if (!select) return;
@@ -1029,19 +952,6 @@ function handleCandleCheckboxChange() {
   applyFiltersAndRenderTable();
 }
 
-function handleOverheatSelectChange() {
-  const select = document.getElementById("overheatSelectFilter");
-  if (!select) return;
-  currentOverheatFilter = select.value;
-  currentPage = 1;
-  applyFiltersAndRenderTable();
-}
-
-function handleFilterChange() {
-  currentPage = 1;
-  applyFiltersAndRenderTable();
-}
-
 function handleSearchInput() {
   const searchInput = document.getElementById("searchInput");
   if (searchInput) currentSearchQuery = searchInput.value.trim();
@@ -1057,41 +967,18 @@ function executeSearchQuery() {
 }
 
 function goHome() {
-  currentGradeFilter = DEFAULT_GRADE_FILTER;
   currentSignalFilter = DEFAULT_SIGNAL_FILTER;
   currentCandleFilter = [...DEFAULT_CANDLE_FILTER];
-  currentOverheatFilter = DEFAULT_OVERHEAT_FILTER;
   currentSearchQuery = "";
   currentPage = 1;
 
   const searchInput = document.getElementById("searchInput");
   if (searchInput) searchInput.value = "";
 
-  switchView('dashboard');
+  switchView('sector');
   updateFilterCounts();
   applyFiltersAndRenderTable();
   window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function filterByGradeQuick(grade) {
-  switchView('dashboard');
-  setGradeFilter(grade);
-}
-
-function filterByUpgradeQuick() {
-  switchView('dashboard');
-  currentSearchQuery = "상향";
-  const searchInput = document.getElementById("searchInput");
-  if (searchInput) searchInput.value = "상향";
-  applyFiltersAndRenderTable();
-}
-
-function filterBySectorCard(secName) {
-  switchView('dashboard');
-  currentSearchQuery = secName;
-  const searchInput = document.getElementById("searchInput");
-  if (searchInput) searchInput.value = secName;
-  applyFiltersAndRenderTable();
 }
 
 function sortTable(key) {
@@ -1104,138 +991,46 @@ function sortTable(key) {
   applyFiltersAndRenderTable();
 }
 
-function goBackToDashboard() {
-  switchView('dashboard');
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
 window.addEventListener("popstate", (e) => {
   if (e.state && e.state.view === 'stockDetail' && e.state.code) {
     openStockDetail(e.state.code, false);
   } else {
-    switchView('dashboard');
+    switchView(lastListView);
   }
 });
 
 /**
- * 12. 뷰 전환 및 AI 마크다운 리포트 / 종목 상세 로딩
+ * 12. 뷰 전환
  */
 function switchView(viewName) {
   document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+  if (['dashboard', 'sector', 'leaders', 'virtual'].includes(viewName)) lastListView = viewName;
 
   if (viewName === 'dashboard') {
     document.getElementById("viewDashboard").classList.add("active");
     document.getElementById("navBtnMain").classList.add("active");
-  } else if (viewName === 'strategy') {
-    document.getElementById("viewStrategy").classList.add("active");
-    const navBtn = document.getElementById("navBtnStrategy");
-    if (navBtn) navBtn.classList.add("active");
-    loadStrategyContent();
-  } else if (viewName === 'report') {
-    document.getElementById("viewReport").classList.add("active");
+  } else if (viewName === 'sector') {
+    document.getElementById("viewSector").classList.add("active");
+    document.getElementById("navBtnSector").classList.add("active");
+  } else if (viewName === 'leaders') {
+    document.getElementById("viewLeaders").classList.add("active");
+    document.getElementById("navBtnLeaders").classList.add("active");
+  } else if (viewName === 'virtual') {
+    document.getElementById("viewVirtual").classList.add("active");
+    document.getElementById("navBtnVirtual").classList.add("active");
+    renderVirtualView();
+  } else if (viewName === 'rules') {
+    document.getElementById("viewRules").classList.add("active");
+    document.getElementById("navBtnRules").classList.add("active");
   } else if (viewName === 'stockDetail') {
     document.getElementById("viewStockDetail").classList.add("active");
-  } else if (viewName === 'priorityStrategy') {
-    const pView = document.getElementById("viewPriorityStrategy");
-    if (pView) pView.classList.add("active");
-    const navBtn = document.getElementById("navBtnPriority");
-    if (navBtn) navBtn.classList.add("active");
-    loadPriorityStrategyContent();
   }
-}
-
-function loadStrategyContent() {
-  const renderBox = document.getElementById("strategyMarkdownRenderBox");
-  if (!renderBox) return;
-
-  renderBox.innerHTML = `<div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 추세추종 매매 전략 HTML을 불러오는 중입니다...</div>`;
-
-  fetch('docs/stockDesc1.html')
-    .then(res => {
-      if (!res.ok) throw new Error("STRATEGY_HTML_NOT_FOUND");
-      return res.text();
-    })
-    .then(htmlText => {
-      // HTML 내용에서 body 내부 컨테이너만 추출하거나 전체 바인딩
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlText, 'text/html');
-      const container = doc.querySelector('.strategy-container');
-      const styleTags = Array.from(doc.querySelectorAll('style')).map(s => s.outerHTML).join('\n');
-      
-      if (container) {
-        renderBox.innerHTML = styleTags + container.outerHTML;
-      } else {
-        renderBox.innerHTML = htmlText;
-      }
-
-      if (window.mermaid) {
-        try {
-          mermaid.run({ nodes: renderBox.querySelectorAll('.language-mermaid, .mermaid') });
-        } catch (e) {
-          console.warn("Mermaid render warning:", e);
-        }
-      }
-    })
-    .catch(err => {
-      renderBox.innerHTML = `<div style="color: #ef4444; padding: 2rem; text-align: center;">❌ 추세추종 매매 전략 HTML을 불러오지 못했습니다. (${err.message})</div>`;
-    });
-}
-
-function loadPriorityStrategyContent() {
-  const renderBox = document.getElementById("priorityStrategyRenderBox");
-  if (!renderBox) return;
-
-  renderBox.innerHTML = `<div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 매수 우선순위 가이드 HTML을 불러오는 중입니다...</div>`;
-
-  fetch('docs/stockDesc2.html')
-    .then(res => {
-      if (!res.ok) throw new Error("PRIORITY_HTML_NOT_FOUND");
-      return res.text();
-    })
-    .then(htmlText => {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlText, 'text/html');
-      const container = doc.querySelector('.strategy-container');
-      const styleTags = Array.from(doc.querySelectorAll('style')).map(s => s.outerHTML).join('\n');
-      
-      if (container) {
-        renderBox.innerHTML = styleTags + container.outerHTML;
-      } else {
-        renderBox.innerHTML = htmlText;
-      }
-    })
-    .catch(err => {
-      renderBox.innerHTML = `<div style="color: #ef4444; padding: 2rem; text-align: center;">❌ 매수 우선순위 전략 HTML을 불러오지 못했습니다. (${err.message})</div>`;
-    });
-}
-
-function selectDateReport(dateStr) {
-  currentDate = dateStr;
-  initDatePickers(dateStr);
-  switchView('report');
-
-  const formattedDate = `${dateStr.slice(0, 4)}년 ${dateStr.slice(4, 6)}월 ${dateStr.slice(6, 8)}일`;
-  document.getElementById("reportPageDateTag").innerText = formattedDate;
-
-  const mdPath = `reports/report_${dateStr}.md`;
-  const renderBox = document.getElementById("markdownRenderBox");
-  renderBox.innerHTML = `<div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 마크다운 리포트를 불러오는 중입니다...</div>`;
-
-  fetchLocalFile(mdPath)
-    .then(text => {
-      renderBox.innerHTML = marked.parse(text);
-    })
-    .catch(err => {
-      renderBox.innerHTML = `<div style="text-align:center; padding: 3rem; color: var(--text-muted);"><i class="fa-solid fa-file-excel" style="font-size: 2rem; margin-bottom: 0.5rem; display: block;"></i>해당 일자의 마크다운 리포트가 존재하지 않습니다.</div>`;
-    });
 }
 
 /**
  * 13. 개별 종목 상세 분석 페이지 오픈 & 차트 렌더링
  */
-let currentChartInstance = null;
-
 function openStockDetail(code, pushHistory = true) {
   const stock = allStockData.find(s => s.종목코드 === code);
   if (!stock) return;
@@ -1246,57 +1041,26 @@ function openStockDetail(code, pushHistory = true) {
     } catch(e) {}
   }
 
-  // 헤더 요약 정보 업데이트
+  // 헤더 요약 정보
+  document.getElementById("detailStockTitle").innerText = `${stock.종목명} 상세`;
   document.getElementById("detailStockCode").innerText = stock.종목코드;
   document.getElementById("detailStockName").innerText = stock.종목명;
+  document.getElementById("detailStockMarket").innerText = stock.시장 || "-";
   document.getElementById("detailStockSector").innerText = stock.섹터;
   document.getElementById("detailStockPrice").innerText = `${stock.현재가}원`;
   document.getElementById("detailStockNaverLink").href = stock.상세페이지;
-  
-  const gradeBadge = document.getElementById("detailStockGradeBadge");
-  gradeBadge.innerText = stock.투자등급;
-  let gradeClass = "grade-c";
-  if (stock.투자등급 === "A+") gradeClass = "grade-aplus";
-  else if (stock.투자등급 === "A") gradeClass = "grade-a";
-  else if (stock.투자등급 === "B") gradeClass = "grade-b";
-  gradeBadge.className = `badge-grade ${gradeClass}`;
 
-  const dualBadge = document.getElementById("detailStockDualBadge");
-  if (stock.쌍끌이여부 === "O") {
-    dualBadge.className = "badge-dual yes";
-    dualBadge.innerText = "🤝 외인/기관 쌍끌이 유입";
-  } else {
-    dualBadge.className = "badge-dual no";
-    dualBadge.innerText = "쌍끌이 미달";
-  }
-
-  // 지표 카드 세부 수치 업데이트
-  document.getElementById("detailForeignSeq").innerText = `${stock.외국인연속 || stock["외국인연속매수(일)"] || 0}일 연속`;
-  document.getElementById("detailForeignSum").innerText = `최근 3일: ${stock["최근3일외인순매수"] || 0}주`;
-  document.getElementById("detailOrganSeq").innerText = `${stock.기관연속 || stock["기관연속매수(일)"] || 0}일 연속`;
-  document.getElementById("detailOrganSum").innerText = `최근 3일: ${stock["최근3일기관순매수"] || 0}주`;
-  document.getElementById("detailForeignRatio").innerText = stock.외국인보유율;
-  
-  document.getElementById("detailMaStatus").innerText = stock.정배열여부 === "O" ? "🟢 완전 정배열 달성" : "🔴 정배열 미달";
-  document.getElementById("detailMa20Status").innerText = stock["20일선위"] === "O" ? "20일선 위 (상승 추세)" : "20일선 미달 (관망)";
-
-  const disparityVal = stock["20일이격도"] || "100.0%";
-  const overheatVal = stock.과열여부 || "적정(안전)";
-  const phaseVal = stock.추세단계 || "관망(C)";
-
-  let overheatGuideText = "🟢 적정 (20일선 안심 눌림목 1차 진입 적기)";
-  if (overheatVal.includes("단기과열")) {
-    overheatGuideText = "🚨 단기과열 (추격 매수 및 추가 불타기 절대 금지!)";
-  } else if (overheatVal.includes("상승과열")) {
-    overheatGuideText = "🟡 상승과열 (신규 추격 자제 / 본전 스탑로스 설정)";
-  } else if (overheatVal.includes("이격과도")) {
-    overheatGuideText = "🔵 이격과도 (20일선 재돌파 전까지 관망)";
-  }
-
-  document.getElementById("detailDisparity").innerText = disparityVal;
-  document.getElementById("detailOverheat").innerText = overheatGuideText;
-  document.getElementById("detailPhase").innerText = phaseVal;
-  document.getElementById("detailBuySignal").innerText = `매수신호: ${stock.매수신호 || "-"}`;
+  // 지표 카드
+  const passText = { "O": "🟢 통과", "X": "🔴 미통과" }[stock.추세통과] || "-";
+  document.getElementById("detailBuySignal").innerText = stock.매수신호 || "-";
+  document.getElementById("detailBuyReason").innerText = stock.매수신호사유 || "-";
+  document.getElementById("detailTrendPass").innerText = passText;
+  document.getElementById("detailReturn3m").innerText = stock["3개월수익률"] || "-";
+  document.getElementById("detailFromHigh").innerText = stock.고점대비 || "-";
+  document.getElementById("detailDisparity").innerText = stock["20일이격도"] || "-";
+  document.getElementById("detailChange").innerText = stock.등락률 || "-";
+  document.getElementById("detailCandle").innerText =
+    `${stock.차트꼬리 || "-"}${stock.강한마감 === "O" ? " · ★ 강한 마감" : ""}`;
 
   // 이평선 가격 수치
   document.getElementById("detailMa5").innerText = `${stock.MA5 || "0"}원`;
@@ -1304,110 +1068,6 @@ function openStockDetail(code, pushHistory = true) {
   document.getElementById("detailMa60").innerText = `${stock.MA60 || "0"}원`;
   document.getElementById("detailMa120").innerText = `${stock.MA120 || "0"}원`;
 
-  // 뷰 전환 & 차트 출력
   switchView("stockDetail");
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  renderGradeHistoryChart(stock);
-}
-
-/**
- * Chart.js 이용 일별 등급 변화 추이 선 그래프 생성
- */
-function renderGradeHistoryChart(stock) {
-  const canvas = document.getElementById("gradeHistoryChart");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-
-  if (currentChartInstance) {
-    currentChartInstance.destroy();
-  }
-
-  const gradeMap = { "A+": 4, "A": 3, "B": 2, "C": 1 };
-  
-  // 11개 거래일 라벨 (MM-DD) 및 해당 날짜별 실제 등급 데이터
-  const dates = availableDates.map(d => `${d.slice(4,6)}-${d.slice(6,8)}`);
-  const dataPoints = availableDates.map(d => {
-    if (stockHistoryCache[d] && stockHistoryCache[d][stock.종목코드]) {
-      return gradeMap[stockHistoryCache[d][stock.종목코드]] || 1;
-    }
-    return gradeMap[stock.투자등급] || 1;
-  });
-
-  const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-  gradient.addColorStop(0, "rgba(16, 185, 129, 0.4)");
-  gradient.addColorStop(1, "rgba(16, 185, 129, 0.0)");
-
-  currentChartInstance = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels: dates,
-      datasets: [{
-        label: `${stock.종목명} 투자등급 추이`,
-        data: dataPoints,
-        borderColor: "#10b981",
-        borderWidth: 3.5,
-        pointBackgroundColor: "#10b981",
-        pointBorderColor: "#ffffff",
-        pointBorderWidth: 2,
-        pointRadius: 6,
-        pointHoverRadius: 9,
-        tension: 0.3,
-        fill: true,
-        backgroundColor: gradient
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      layout: {
-        padding: { left: 10, right: 15, top: 15, bottom: 10 }
-      },
-      scales: {
-        y: {
-          min: 0,
-          max: 5,
-          ticks: {
-            stepSize: 1,
-            callback: function(val) {
-              const numVal = Math.round(val);
-              if (numVal === 4) return "🔥 A+ (대세주)";
-              if (numVal === 3) return "⭐ A (우량주)";
-              if (numVal === 2) return "🟡 B (관찰주)";
-              if (numVal === 1) return "⚪ C (관망주)";
-              return "";
-            },
-            color: "#cbd5e1",
-            font: { size: 13, weight: "bold", family: "Inter, sans-serif" }
-          },
-          grid: {
-            color: function(ctx) {
-              if (ctx.tick && [1, 2, 3, 4].includes(Math.round(ctx.tick.value))) {
-                return "rgba(255, 255, 255, 0.12)";
-              }
-              return "transparent";
-            }
-          }
-        },
-        x: {
-          ticks: {
-            color: "#94a3b8",
-            font: { size: 11, weight: "600" }
-          },
-          grid: { color: "rgba(255, 255, 255, 0.05)" }
-        }
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              const val = Math.round(context.parsed.y);
-              const names = { 4: "A+ 등급 (쌍끌이 + 20일선위 + 정배열)", 3: "A 등급 (쌍끌이 + 20일선위)", 2: "B 등급 (수급/차트 1가지)", 1: "C 등급 (관망)" };
-              return ` 투자등급: ${names[val] || val}`;
-            }
-          }
-        }
-      }
-    }
-  });
 }
