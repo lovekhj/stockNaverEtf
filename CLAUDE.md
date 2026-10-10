@@ -26,6 +26,9 @@ Python 표준 라이브러리만 쓴다. `pip install`이 필요 없다. 테스�
 | `python3 main.py --all` | 1~5단계 전체 실행 (최초 구축) |
 | `python3 main.py --step 4,5` | 수급·이평선 분석과 리포트만 (매일 장 마감 후) |
 | `python3 getEtfInvestorFlow.py` | 4단계(등급 산출)만 단독 실행 |
+| `python3 getStockHistory.py --all --index` | 검증용 과거 일봉·수급을 `stockdata/`에 수집 (약 20분, git 제외) |
+| `python3 checkSignalReturns.py` | 검증: 조건별 5·10일 뒤 수익률 |
+| `python3 backtestTrendRules.py` | 검증: 매수 조건 × 매도 규칙 백테스트 |
 
 ## 아키텍처
 
@@ -39,7 +42,7 @@ Python 표준 라이브러리만 쓴다. `pip install`이 필요 없다. 테스�
 | 4 | `getEtfInvestorFlow.py` | 수급·이평선 분석, 등급 (`reports/report_YYYYMMDD.csv`) |
 | 5 | `getEtfAiReport.py` | 마크다운/PDF 리포트 |
 
-등급 기준은 `getEtfInvestorFlow.py`의 `calculate_grade`에 있다. 대시보드는 `index.html`, `app.js`, `style.css`(정적 페이지, GitHub Pages)다.
+등급 기준은 `getEtfInvestorFlow.py`의 `calculate_grade`에 있다. 리포트의 `매수신호`(A/B/C) 열은 검증 중인 후보 규칙이며 `buySignal.py`에 정의한다. 대시보드는 `index.html`, `app.js`, `style.css`(정적 페이지, GitHub Pages)다.
 
 ## 주의: 자동 푸시와 공개 저장소
 

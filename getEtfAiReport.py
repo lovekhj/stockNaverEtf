@@ -133,6 +133,9 @@ def generate_ai_report(csv_path):
     b_list = [r for r in rows if r['투자등급'] == 'B']
     c_list = [r for r in rows if r['투자등급'] == 'C']
 
+    # 매수신호 A 종목 (매수신호 열이 없는 예전 CSV에서는 빈 목록)
+    signal_list = [r for r in rows if r.get('매수신호', '').startswith('A')]
+
     # 2. 등급 변동(상향/하향/신규) 데이터 분류
     upgraded = [r for r in rows if '상향' in r.get('등급변동', '')]
     downgraded = [r for r in rows if '하향' in r.get('등급변동', '')]
@@ -150,7 +153,20 @@ def generate_ai_report(csv_path):
     md.append(f"")
     
     md.append(f"> [!IMPORTANT]")
-    md.append(f"> **추세추종 핵심 원칙**: 상승 추세(20일선 위) 및 수급(외인/기관 쌍끌이)이 검증된 **A+ 및 A 등급 종목** 중심 매매. 손절선 -3% 엄수 및 피라미딩(40% → 30% → 20% → 10%) 분할 매수 수립.")
+    md.append(f"> **보는 순서**: 먼저 매수신호 A 종목을 보고, 투자등급(A+/A/B/C)은 수급·이평선 상태를 참고하는 용도로 봅니다. 매수신호는 검증 중인 후보 규칙이며 매수·매도 추천이 아닙니다.")
+    md.append(f"")
+
+    # [매수신호] 매수신호 A 종목 (강한 마감 + 정배열)
+    md.append(f"## 🎯 매수신호 A 종목 ({len(signal_list)}종목)")
+    md.append(f"**강한 마감**(+3% 이상, 거래량 1.5배 이상)과 **정배열**(종가 > 5 > 20 > 60일선, 20일선 상승)을 함께 채운 종목입니다. 기준일 종가 매수 기준입니다.")
+    md.append(f"")
+    if signal_list:
+        md.append(f"| 종목코드 | 종목명 | 대표섹터 | 현재가 | 등락률 | 차트 꼬리 | 투자등급 | 판정 사유 | 상세페이지 |")
+        md.append(f"| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :--- | :---: |")
+        for r in signal_list:
+            md.append(f"| `{r['종목코드']}` | **{r['종목명']}** | `{r.get('섹터', '일반 주도주')}` | {r['현재가']}원 | {r.get('등락률', '-')} | {r.get('차트꼬리', '') or '-'} | {r['투자등급']} | {r.get('매수신호사유', '')} | [네이버증권]({r['상세페이지']}) |")
+    else:
+        md.append(f"> 기준일에 매수신호 A 종목이 없습니다.")
     md.append(f"")
 
     # [섹션 1] 종합 시장 등급 요약 표
@@ -225,7 +241,7 @@ def generate_ai_report(csv_path):
             md.append(f"- **{r['종목명']} ({r['종목코드']}) - {r.get('섹터', '일반 주도주')}**:")
             md.append(f"  - 현재가 {r['현재가']}원 / MA5: {r['MA5']}원 / MA20: {r['MA20']}원")
             md.append(f"  - 외국인 {r['외국인연속매수(일)']}일, 기관 {r['기관연속매수(일)']}일 연속 순매수세 지속중.")
-            md.append(f"  - 완전 정배열 상태로 눌림목 발생 시 1차 비중(40%) 진입 후보 1순위.")
+            md.append(f"  - 5/20/60/120일선 정배열 상태. 매수신호: {r.get('매수신호', '-') or '-'}")
     else:
         md.append(f"> 현재 A+ 등급 조건을 완벽히 충족하는 종목이 없습니다. 시장 관망 또는 A 등급 우량주에 주목하세요.")
     md.append(f"")
@@ -279,21 +295,23 @@ def generate_ai_report(csv_path):
         md.append(f"> ℹ️ 이전 분석 대비 변동 내역이 없거나, 오늘 최초 신규 포착된 종목들입니다.")
         md.append(f"")
 
-    # [섹션 5] 추세추종 매매 실전 가이드
-    md.append(f"## 5. 🎯 AI 추세추종 매매 실전 전략 가이드")
+    # [섹션 5] 매수신호 후보 규칙 안내
+    md.append(f"## 5. 🎯 매수신호 후보 규칙 (검증 중)")
     md.append(f"")
-    md.append(f"### 1️⃣ 피라미딩(Pyramiding) 분할 매수 규칙")
-    md.append(f"- **1차 매수 (40%)**: A+ 또는 A 등급 종목이 20일선 지지 후 반등할 때 진입.")
-    md.append(f"- **2차 매수 (30%)**: 1차 매수가 대비 **+3%~+5%** 수익 발생 시 주도주 확신으로 추매.")
-    md.append(f"- **3차 매수 (20%)**: 전고점 돌파 및 거래량 동반 시 추가 매수.")
-    md.append(f"- **4차 매수 (10%)**: 완벽한 추세 분출 구간 불타기 마무리.")
+    md.append(f"| 구분 | 내용 |")
+    md.append(f"| :--- | :--- |")
+    md.append(f"| 매수 | 매수신호 A인 날의 종가에 한 번 매수 |")
+    md.append(f"| 강한 마감 | 당일 등락률 +3% 이상, 거래량이 직전 20거래일 평균의 1.5배 이상 |")
+    md.append(f"| 정배열 | 종가 > 5일선 > 20일선 > 60일선, 20일선 상승 |")
+    md.append(f"| 매도 | 종가가 보유 중 최고 종가의 -5% 이하이면 그날 종가에 전량 |")
     md.append(f"")
-    md.append(f"### 2️⃣ 리스크 관리 & 손절 규칙")
-    md.append(f"- **-3% 손절 원칙**: 매수가 대비 **-3%** 도달 시 즉시 기계적 손절매 시행.")
-    md.append(f"- **등급 하향 시 대응**: A+/A 등급 종목이 **B 또는 C 등급으로 하향**되거나 **20일선을 이탈**하면 절반 이상 이익실현 또는 손절 정리를 권장합니다.")
+    md.append(f"- 과거 약 4년(2022-10 ~ 2026-10) 백테스트에서 승률 약 36%, 손익비 약 2.5였습니다. 세 번 중 두 번 가까이는 손절로 끝납니다.")
+    md.append(f"- 강세장 구간만 검증했고 하락장은 검증하지 않았습니다. 종가에 정확히 체결된다고 가정한 숫자입니다.")
+    md.append(f"- 매수신호는 기준일 종가 매수를 뜻합니다. 이 리포트는 장 마감 후에 만들어지므로, 리포트를 보고 다음 날 사면 다른 매매입니다.")
+    md.append(f"- 투자등급(A+/A/B/C)과 과열여부는 매수신호와 다른 기준입니다. 과거 검증에서 등급 순서는 이후 수익률과 맞지 않았습니다.")
     md.append(f"")
-    md.append(f"> [!TIP]")
-    md.append(f"> **리포트 활용법**: 본 마크다운 리포트는 매일 4단계 수급 분석 완료 후 5단계 AI 분석을 통해 자동으로 업데이트됩니다. 최신 `report_YYYYMMDD.md` 파일을 통해 주도주의 등급 변동 추이를 체크하세요.")
+    md.append(f"> [!WARNING]")
+    md.append(f"> 검증 중인 후보 규칙이며 과거 데이터 분석입니다. 매수·매도 추천이 아닙니다. 데이터: 네이버 증권, 장 마감 후 확정치.")
 
     # 마크다운 파일로 저장
     report_content = "\n".join(md)
@@ -505,6 +523,46 @@ def generate_pdf_report(csv_path):
     td_blue_sm = ParagraphStyle('PdfTDBlueSm', parent=styles['Normal'], fontName='AppleGothic', fontSize=6.0, leading=7.5, textColor=colors.HexColor('#2563eb'), alignment=1)
 
     # =========================================================================
+    # 📌 [표 0] 🎯 매수신호 A 종목 (강한 마감 + 정배열)
+    # =========================================================================
+    signal_list = [r for r in rows if r.get('매수신호', '').startswith('A')]
+    story.append(Paragraph(f'🎯 매수신호 A 종목 (강한 마감 + 정배열) - {len(signal_list)}종목', section_style))
+    story.append(Paragraph('당일 +3% 이상, 거래량 1.5배 이상 + 종가 > 5 > 20 > 60일선. 기준일 종가 매수 기준이며 검증 중인 후보 규칙입니다. 매수·매도 추천이 아닙니다.', section_desc))
+
+    if signal_list:
+        t0_data = [[
+            Paragraph('코드', th_sm), Paragraph('종목명', th_sm), Paragraph('대표 섹터', th_sm),
+            Paragraph('현재가', th_sm), Paragraph('등락률', th_sm), Paragraph('차트 꼬리', th_sm),
+            Paragraph('투자등급', th_sm), Paragraph('판정 사유', th_sm)
+        ]]
+        for r in signal_list:
+            chg_val = r.get('등락률', '')
+            c_style = td_red_sm if '+' in chg_val else (td_blue_sm if '-' in chg_val else td_sm)
+            t0_data.append([
+                Paragraph(r.get('종목코드',''), td_sm),
+                Paragraph(r.get('종목명',''), td_bold_sm),
+                Paragraph(r.get('섹터','일반 주도주'), td_left_sm),
+                Paragraph(f"{r.get('현재가','')}원", td_sm),
+                Paragraph(chg_val, c_style),
+                Paragraph(r.get('차트꼬리','') or '-', td_sm),
+                Paragraph(r.get('투자등급',''), td_sm),
+                Paragraph(r.get('매수신호사유',''), td_left_sm)
+            ])
+        t0 = Table(t0_data, colWidths=[42, 86, 78, 50, 46, 50, 34, 159])
+        t0.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#b91c1c')),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#cbd5e1')),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#fef2f2')]),
+            ('TOPPADDING', (0,0), (-1,-1), 3),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ]))
+        story.append(t0)
+    else:
+        story.append(Paragraph('기준일에 매수신호 A 종목이 없습니다.', section_desc))
+    story.append(Spacer(1, 8))
+
+    # =========================================================================
     # 📌 [표 1] 🔥 A+ 등급 핵심 주도주 (정배열 대세상승)
     # =========================================================================
     story.append(Paragraph(f'🔥 A+ 등급 핵심 주도주 (정배열 대세상승) - {len(a_plus_list)}종목', section_style))
@@ -515,7 +573,7 @@ def generate_pdf_report(csv_path):
             [
                 Paragraph('코드', th_sm), Paragraph('종목명', th_sm), Paragraph('대표 섹터', th_sm),
                 Paragraph('20일이격도', th_sm), Paragraph('과열여부', th_sm), Paragraph('추세단계', th_sm),
-                Paragraph('권장진입가', th_sm), Paragraph('현재가', th_sm), Paragraph('등락률', th_sm),
+                Paragraph('현재가', th_sm), Paragraph('등락률', th_sm),
                 Paragraph('쌍끌이', th_sm), Paragraph('외인연속', th_sm), Paragraph('기관연속', th_sm),
                 Paragraph('20일선위', th_sm), Paragraph('정배열', th_sm)
             ]
@@ -530,7 +588,6 @@ def generate_pdf_report(csv_path):
                 Paragraph(r.get('20일이격도','100.0%'), td_sm),
                 Paragraph(r.get('과열여부','적정(안전)'), td_sm),
                 Paragraph(r.get('추세단계','정배열가속(A+)'), td_sm),
-                Paragraph(r.get('추천매수가',''), td_sm),
                 Paragraph(f"{r.get('현재가','')}원", td_sm),
                 Paragraph(chg_val, c_style),
                 Paragraph(r.get('쌍끌이여부',''), td_sm),
@@ -539,7 +596,7 @@ def generate_pdf_report(csv_path):
                 Paragraph(r.get('20일선위','O'), td_sm),
                 Paragraph(r.get('정배열여부','O'), td_sm)
             ])
-        t1 = Table(t1_data, colWidths=[36, 62, 62, 38, 42, 48, 60, 44, 36, 25, 24, 24, 22, 22])
+        t1 = Table(t1_data, colWidths=[36, 82, 82, 38, 42, 68, 44, 36, 25, 24, 24, 22, 22])
         t1.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e3a8a')),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
@@ -664,19 +721,22 @@ def generate_pdf_report(csv_path):
     story.append(Paragraph('2. 20일 이격도 & 과열 판정 가이드', ParagraphStyle('SubSec2', parent=styles['Heading3'], fontName='AppleGothic', fontSize=9.5, leading=13, textColor=colors.HexColor('#0f172a'), spaceBefore=4, spaceAfter=3)))
     
     disparity_text = """
-    • <b>🟢 적정 (97% ~ 108%)</b>: 20일 이동평균선 부근 안심 1차 진입 적기 (추세추종 매수 권장 구간)<br/>
-    • <b>🟡 상승과열 (108% ~ 115%)</b>: 단기 상승 폭 확대 구간. 신규 추격 매수 자제 및 본전 스탑로스 설정<br/>
-    • <b>🔴 단기과열 (115% 이상)</b>: 🚨 <b>추가 매수 및 불타기 절대 금지!</b> (단기 차익실현 및 이익 확보 권장)<br/>
-    • <b>🔵 이격과도 (&lt; 97%)</b>: 20일 이동평균선 이탈 구간 (관망 및 비중 축소 대응)
+    • <b>🟢 적정 (97% ~ 108%)</b>: 종가가 20일 이동평균선 부근에 있는 구간<br/>
+    • <b>🟡 상승과열 (108% ~ 115%)</b>: 20일선에서 벌어지기 시작한 구간<br/>
+    • <b>🔴 단기과열 (115% 이상)</b>: 20일선에서 크게 벌어진 구간<br/>
+    • <b>🔵 이격과도 (&lt; 97%)</b>: 20일 이동평균선 아래로 내려온 구간<br/>
+    ※ 이격도 구간을 나눈 표시입니다. 매수신호 A는 크게 오른 날에 나오므로 대부분 과열 구간에 속하며, 과거 검증에서 과열 구간의 매수신호가 적정 구간보다 나쁘지 않았습니다.
     """
     story.append(Paragraph(disparity_text, normal_style))
     story.append(Spacer(1, 8))
 
     # 3) 실전 매매 수칙
-    story.append(Paragraph('3. AI 추세추종 매매 실전 전략 수칙', ParagraphStyle('SubSec3', parent=styles['Heading3'], fontName='AppleGothic', fontSize=9.5, leading=13, textColor=colors.HexColor('#0f172a'), spaceBefore=4, spaceAfter=3)))
+    story.append(Paragraph('3. 매수신호 후보 규칙 (검증 중)', ParagraphStyle('SubSec3', parent=styles['Heading3'], fontName='AppleGothic', fontSize=9.5, leading=13, textColor=colors.HexColor('#0f172a'), spaceBefore=4, spaceAfter=3)))
     strat_text = """
-    • <b>피라미딩(Pyramiding) 분할 매수</b>: 1차(40%) 20일선 반등 → 2차(30%) +3%~+5% 수익 시 추매 → 3차(20%) 전고점 돌파 → 4차(10%) 불타기<br/>
-    • <b>리스크 관리 & 손절 원칙</b>: 매수가 대비 <b>-3% 손절선 기계적 적용</b> | B/C 등급 하향 또는 20일선 이탈 시 수급 악화 판단 후 정량 대응
+    • <b>매수</b>: 매수신호 A(강한 마감 + 정배열)인 날의 종가에 한 번 매수<br/>
+    • <b>매도</b>: 종가가 보유 중 최고 종가의 -5% 이하이면 그날 종가에 전량<br/>
+    • <b>검증</b>: 2022-10 ~ 2026-10 백테스트에서 승률 약 36%, 손익비 약 2.5. 강세장 구간만 검증했고 하락장은 검증하지 않았습니다<br/>
+    • 과거 데이터 분석이며 매수·매도 추천이 아닙니다. 데이터: 네이버 증권, 장 마감 후 확정치
     """
     story.append(Paragraph(strat_text, normal_style))
 

@@ -59,3 +59,6 @@ cron.log
 # Temporary & Swap Files
 *.tmp
 *.bak
+
+# 백테스트용 과거 일봉·수급 (네이버 증권에서 다시 받을 수 있음, 공개하지 않음)
+stockdata/

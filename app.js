@@ -21,20 +21,25 @@ let sortedAvailableDates = [...availableDates].sort((a, b) => b.localeCompare(a)
 let currentDate = getTodayDateStr();
 let stockHistoryCache = {}; // { dateStr: { code: gradeStr } }
 
+// 차트 꼬리 분류 (getEtfInvestorFlow.py 의 classify_candle 이 만드는 값과 같아야 한다)
 const CANDLE_TYPES = [
-  { id: "망치형", label: "🟢 🔨 망치형 (강력매수)" },
-  { id: "아래꼬리", label: "🟢 🕯️ 아래꼬리 (눌림반등)" },
-  { id: "양봉", label: "🟢 📈 양봉 (상승지속)" },
-  { id: "윗꼬리", label: "⚠️ 🕯️ 긴 윗꼬리 (매도압력)" },
-  { id: "십자형", label: "🟡 ⚖️ 십자형 (힘겨루기)" }
+  { id: "장대양봉", label: "장대양봉" },
+  { id: "보통 양봉", label: "보통 양봉" },
+  { id: "긴 아래꼬리", label: "긴 아래꼬리" },
+  { id: "십자형", label: "십자형" },
+  { id: "긴 윗꼬리", label: "긴 윗꼬리" },
+  { id: "보통 음봉", label: "보통 음봉" },
+  { id: "장대음봉", label: "장대음봉" }
 ];
 
-// Filter States - Defaults: A등급 + 망치형/아래꼬리 + 적정
-const DEFAULT_GRADE_FILTER = "A";
-const DEFAULT_CANDLE_FILTER = ["망치형", "아래꼬리"];
-const DEFAULT_OVERHEAT_FILTER = "적정";
+// Filter States - Defaults: 모든 필터 "전체"
+const DEFAULT_GRADE_FILTER = "ALL";
+const DEFAULT_SIGNAL_FILTER = "ALL";
+const DEFAULT_CANDLE_FILTER = CANDLE_TYPES.map(c => c.id);
+const DEFAULT_OVERHEAT_FILTER = "ALL";
 
 let currentGradeFilter = DEFAULT_GRADE_FILTER;
+let currentSignalFilter = DEFAULT_SIGNAL_FILTER;
 let currentCandleFilter = [...DEFAULT_CANDLE_FILTER];
 let currentOverheatFilter = DEFAULT_OVERHEAT_FILTER;
 let currentSectorFilter = "ALL";
@@ -372,14 +377,13 @@ function renderEmptyDashboard(dateStr) {
 
   renderKPIs();
   renderSectorGrid();
-  renderHighlights();
   populateSectorSelectFilter();
 
   const tbody = document.getElementById("tableBody");
   if (tbody) {
     tbody.innerHTML = `
       <tr>
-        <td colspan="18" style="text-align: center; padding: 3.5rem 1rem; color: var(--text-muted); font-size: 0.95rem;">
+        <td colspan="19" style="text-align: center; padding: 3.5rem 1rem; color: var(--text-muted); font-size: 0.95rem;">
           <i class="fa-solid fa-calendar-xmark" style="font-size: 2.5rem; margin-bottom: 0.8rem; display: block; color: var(--text-dim);"></i>
           <strong style="color: var(--text-main); font-size: 1.05rem; display: block; margin-bottom: 0.3rem;">
             ${formattedDate} 데이터가 존재하지 않습니다.
@@ -438,27 +442,9 @@ function loadDashboardData(dateStr, isInitialLoad = false) {
               const fSeq = parseSeq(item["외국인연속매수(일)"] || item["외국인연속매수"] || item["외국인연속"]);
               const iSeq = parseSeq(item["기관연속매수(일)"] || item["기관연속매수"] || item["기관연속"]);
 
-              // 차트 꼬리 & 캔들 형태 평가 판정
-              let candleShape = item.차트꼬리 || item.캔들모양 || item.차트패턴;
-              if (!candleShape || candleShape === "-") {
-                const codeNum = parseInt(item.종목코드 ? item.종목코드.replace(/[^0-9]/g, '') : "0", 10);
-                const grade = item.투자등급 ? item.투자등급.trim() : "C";
-                const rateVal = parseFloat((item.등락률 || "0").replace(/[+%,]/g, "") || 0);
-                const dual = item.쌍끌이여부 ? item.쌍끌이여부.trim() : "X";
-                const overheat = item.과열여부 || "";
-
-                if (grade === "A+" || (dual === "O" && rateVal > 1.2)) {
-                  candleShape = (codeNum % 2 === 0) ? "망치형 (강력매수)" : "아래꼬리 (눌림반등)";
-                } else if (overheat.includes("과열") || rateVal < -2.0) {
-                  candleShape = "긴 윗꼬리 (매도압력)";
-                } else if (rateVal > 0) {
-                  candleShape = "양봉 (상승지속)";
-                } else if (Math.abs(rateVal) < 0.3) {
-                  candleShape = "십자형 (힘겨루기)";
-                } else {
-                  candleShape = (codeNum % 3 === 0) ? "아래꼬리 (눌림반등)" : "양봉 (상승지속)";
-                }
-              }
+              // 차트 꼬리: CSV에 값이 있을 때만 쓰고, 없으면 null (임의로 만들어 넣지 않는다)
+              const rawCandle = item.차트꼬리 || item.캔들모양 || item.차트패턴;
+              const candleShape = (rawCandle && rawCandle.trim() !== "-") ? rawCandle.trim() : null;
 
               return {
                 ...item,
@@ -469,6 +455,7 @@ function loadDashboardData(dateStr, isInitialLoad = false) {
                 등급변동: item.등급변동 ? item.등급변동.trim() : "-",
                 변동이유: item.변동이유 ? item.변동이유.trim() : "-",
                 차트꼬리: candleShape,
+                등락률: (item.등락률 || "0.00%").trim().replace(/^--/, "-"),
                 현재가: item.현재가 ? item.현재가.trim() : "0",
                 쌍끌이여부: item.쌍끌이여부 ? item.쌍끌이여부.trim() : "X",
                 정배열여부: item.정배열여부 ? item.정배열여부.trim() : "X",
@@ -493,7 +480,6 @@ function loadDashboardData(dateStr, isInitialLoad = false) {
             // UI 영역 업데이트
             renderKPIs();
             renderSectorGrid();
-            renderHighlights();
             populateSectorSelectFilter();
             applyFiltersAndRenderTable();
             renderCalendarGrid();
@@ -579,6 +565,19 @@ function updateFilterCounts() {
       <option value="C">⚪ C 미달/관망주 (${cList.length.toLocaleString()}개)</option>
     `;
     gradeSelect.value = curVal;
+  }
+
+  // Update Buy Signal Select Combobox Options with Live Counts
+  const signalSelect = document.getElementById("signalSelectFilter");
+  if (signalSelect) {
+    const signalCount = (letter) => allStockData.filter(d => (d.매수신호 || "").startsWith(letter)).length;
+    signalSelect.innerHTML = `
+      <option value="ALL">전체 매수신호 (${total.toLocaleString()}개)</option>
+      <option value="A">A(매수) (${signalCount("A").toLocaleString()}개)</option>
+      <option value="B">B(재검토) (${signalCount("B").toLocaleString()}개)</option>
+      <option value="C">C(매수금지) (${signalCount("C").toLocaleString()}개)</option>
+    `;
+    signalSelect.value = currentSignalFilter;
   }
 
   // Update Candle Multi-Select Combobox Options with Live Counts
@@ -702,157 +701,6 @@ function renderSectorGrid() {
 }
 
 /**
- * 6. A+ 주도주 및 승격 종목 하이라이트 목록 렌더링
- */
-function renderHighlights() {
-  // 1. A+ Table rendering & Sorting (1순위: 과열여부 적정/안전 우선, 2순위: 20일이격도)
-  const overheatRank = (ohStr) => {
-    if (!ohStr || ohStr.includes("적정")) return 1;
-    if (ohStr.includes("이격과도")) return 2;
-    if (ohStr.includes("상승과열")) return 3;
-    if (ohStr.includes("단기과열")) return 4;
-    return 5;
-  };
-
-  const aplusList = allStockData.filter(d => d.투자등급 === "A+");
-  
-  aplusList.sort((a, b) => {
-    const oA = overheatRank(a.과열여부);
-    const oB = overheatRank(b.과열여부);
-    if (oA !== oB) {
-      return oA - oB;
-    }
-    const iA = parseFloat((a["20일이격도"] || "0").replace(/%/g, "") || 0);
-    const iB = parseFloat((b["20일이격도"] || "0").replace(/%/g, "") || 0);
-    return iA - iB;
-  });
-
-  const aplusTbody = document.getElementById("aplusTableBody");
-  const aplusBadge = document.getElementById("aplusCardBadge");
-  if (aplusBadge) aplusBadge.innerText = `${aplusList.length}종목`;
-
-  if (aplusTbody) {
-    aplusTbody.innerHTML = "";
-    if (aplusList.length === 0) {
-      aplusTbody.innerHTML = `<tr><td colspan="15" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">A+ 등급 조건(쌍끌이+20일선위+정배열)을 만족하는 종목이 없습니다.</td></tr>`;
-    } else {
-      aplusList.forEach(row => {
-        const tr = document.createElement("tr");
-        const dualBadge = row.쌍끌이여부 === "O" 
-          ? '<span class="badge-dual yes">쌍끌이</span>' 
-          : '<span class="badge-dual no">-</span>';
-
-        const overheatText = row.과열여부 || "적정(안전)";
-        let overheatBadge = '<span style="color:#10b981; font-weight:600;"><i class="fa-solid fa-shield-check"></i> 적정(안전)</span>';
-        if (overheatText.includes("단기과열")) {
-          overheatBadge = '<span style="color:#ef4444; font-weight:600;"><i class="fa-solid fa-triangle-exclamation"></i> 단기과열</span>';
-        } else if (overheatText.includes("상승과열")) {
-          overheatBadge = '<span style="color:#f59e0b; font-weight:600;"><i class="fa-solid fa-fire"></i> 상승과열</span>';
-        } else if (overheatText.includes("이격과도")) {
-          overheatBadge = '<span style="color:#6366f1; font-weight:600;"><i class="fa-solid fa-arrow-trend-down"></i> 이격과도</span>';
-        }
-
-        const rateVal = row.등락률 || "-";
-        const rateColor = rateVal.includes('+') ? '#ef4444' : (rateVal.includes('-') ? '#3b82f6' : 'var(--text-main)');
-
-        tr.innerHTML = `
-          <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
-          <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
-          <td><span class="stock-sector-tag">${row.섹터}</span></td>
-          <td><span class="count-pill">${row["20일이격도"] || "100.0%"}</span></td>
-          <td>${overheatBadge}</td>
-          <td><span class="stock-sector-tag" style="background: rgba(255,255,255,0.06); color: var(--text-main); font-weight: 600;">${row.추세단계 || "정배열가속(A+)"}</span></td>
-          <td><strong style="color: var(--color-aplus); font-size: 0.85rem;">${row.추천매수가 || `${row.현재가}원`}</strong></td>
-          <td><strong>${row.현재가}원</strong></td>
-          <td><strong style="color: ${rateColor};">${rateVal}</strong></td>
-          <td>${dualBadge}</td>
-          <td>${row.외국인연속 || row["외국인연속매수(일)"] || 0}일</td>
-          <td>${row.기관연속 || row["기관연속매수(일)"] || 0}일</td>
-          <td>${row["20일선위"] === "O" ? "🟢 O" : "🔴 X"}</td>
-          <td>${row.정배열여부 === "O" ? "🟢 O" : "🔴 X"}</td>
-          <td><a href="${row.상세페이지}" target="_blank" class="link-naver">네이버 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.75rem;"></i></a></td>
-        `;
-        aplusTbody.appendChild(tr);
-      });
-    }
-  }
-
-  // 2. Upgraded Table rendering (A+ 등급 승격 및 신규 종목만 추출)
-  const upgradedList = allStockData.filter(d => d.투자등급 === "A+" && (d.등급변동.includes("상향") || d.등급변동.includes("NEW")));
-  const upgradedTbody = document.getElementById("upgradedTableBody");
-  const upgradedBadge = document.getElementById("upgradedCardBadge");
-  if (upgradedBadge) upgradedBadge.innerText = `${upgradedList.length}종목`;
-
-  if (upgradedTbody) {
-    upgradedTbody.innerHTML = "";
-    if (upgradedList.length === 0) {
-      upgradedTbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">A+ 등급으로 승격되거나 신규 포착된 종목이 없습니다.</td></tr>`;
-    } else {
-      upgradedList.forEach(row => {
-        const tr = document.createElement("tr");
-        const dualBadge = row.쌍끌이여부 === "O" 
-          ? '<span class="badge-dual yes">쌍끌이</span>' 
-          : '<span class="badge-dual no">-</span>';
-
-        const rateVal = row.등락률 || "-";
-        const rateColor = rateVal.includes('+') ? '#ef4444' : (rateVal.includes('-') ? '#3b82f6' : 'var(--text-main)');
-
-        tr.innerHTML = `
-          <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
-          <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
-          <td><span class="stock-sector-tag">${row.섹터}</span></td>
-          <td><strong style="color: var(--color-upgraded);">${row.등급변동}</strong></td>
-          <td><span style="font-size:0.82rem; color:var(--text-muted);">${row.변동이유}</span></td>
-          <td><strong>${row.현재가}원</strong></td>
-          <td><strong style="color: ${rateColor};">${rateVal}</strong></td>
-          <td>${dualBadge}</td>
-          <td>${row["20일선위"] === "O" ? "🟢 O" : "🔴 X"}</td>
-          <td><a href="${row.상세페이지}" target="_blank" class="link-naver">네이버 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.75rem;"></i></a></td>
-        `;
-        upgradedTbody.appendChild(tr);
-      });
-    }
-  }
-
-  // 3. Downgraded Table rendering (A+ 등급에서 하향 조정된 주의 종목만 추출)
-  const downgradedList = allStockData.filter(d => d.등급변동.includes("A+ -> A") || d.등급변동.includes("A+ ->"));
-  const downgradedTbody = document.getElementById("downgradedTableBody");
-  const badgeEl = document.getElementById("downgradedCardBadge");
-  if (badgeEl) badgeEl.innerText = `${downgradedList.length}종목`;
-
-  if (downgradedTbody) {
-    downgradedTbody.innerHTML = "";
-    if (downgradedList.length === 0) {
-      downgradedTbody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">이전 거래일 대비 A+ 등급에서 하향 조정된 리스크 관리 주의 종목이 없습니다.</td></tr>`;
-    } else {
-      downgradedList.forEach(row => {
-        const tr = document.createElement("tr");
-        const dualBadge = row.쌍끌이여부 === "O" 
-          ? '<span class="badge-dual yes">쌍끌이</span>' 
-          : '<span class="badge-dual no">-</span>';
-
-        const rateVal = row.등락률 || "-";
-        const rateColor = rateVal.includes('+') ? '#ef4444' : (rateVal.includes('-') ? '#3b82f6' : 'var(--text-main)');
-
-        tr.innerHTML = `
-          <td><code class="stock-code-clickable" onclick="openStockDetail('${row.종목코드}')" title="클릭 시 ${row.종목명} 상세 분석 페이지로 이동">${row.종목코드}</code></td>
-          <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
-          <td><span class="stock-sector-tag">${row.섹터}</span></td>
-          <td><strong style="color: #ef4444;">${row.등급변동}</strong></td>
-          <td><span style="font-size:0.82rem; color:var(--text-muted);">${row.변동이유}</span></td>
-          <td><strong>${row.현재가}원</strong></td>
-          <td><strong style="color: ${rateColor};">${rateVal}</strong></td>
-          <td>${dualBadge}</td>
-          <td>${row["20일선위"] === "O" ? "🟢 O" : "🔴 X"}</td>
-          <td><a href="${row.상세페이지}" target="_blank" class="link-naver">네이버 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.75rem;"></i></a></td>
-        `;
-        downgradedTbody.appendChild(tr);
-      });
-    }
-  }
-}
-
-/**
  * 7. 드롭다운 필터 옵션 동적 생성
  */
 function populateSectorSelectFilter() {
@@ -877,15 +725,19 @@ function applyFiltersAndRenderTable() {
     // 1. Grade filter
     if (currentGradeFilter !== "ALL" && item.투자등급 !== currentGradeFilter) return false;
 
+    // 1-2. Buy signal filter (매수신호 열이 없는 예전 리포트는 A/B/C 어느 것에도 해당하지 않는다)
+    if (currentSignalFilter !== "ALL" && !(item.매수신호 || "").startsWith(currentSignalFilter)) return false;
+
     // 2. Candle tail filter (Multi-select array support)
     if (currentCandleFilter !== "ALL") {
       const selectedArr = Array.isArray(currentCandleFilter) ? currentCandleFilter : [currentCandleFilter];
       if (selectedArr.length === 0) {
         return false;
       } else if (selectedArr.length < CANDLE_TYPES.length) {
+        // 차트 꼬리 값이 없는 종목은 걸러낼 근거가 없으므로 통과시킨다
         const cStr = item.차트꼬리 || "";
         const matches = selectedArr.some(target => cStr.includes(target));
-        if (!matches) return false;
+        if (cStr && !matches) return false;
       }
     }
 
@@ -957,6 +809,11 @@ function applyFiltersAndRenderTable() {
       const gB = gradeRank[b.투자등급] || 99;
       return gA - gB;
 
+    } else if (sortKey === "매수신호") {
+      // A(매수) -> B(재검토) -> C(매수금지) -> 신호 없음(-) 순
+      const signalRank = (sig) => ({ "A": 1, "B": 2, "C": 3 }[(sig || "").charAt(0)] || 4);
+      valA = signalRank(a.매수신호);
+      valB = signalRank(b.매수신호);
     } else if (sortKey === "현재가") {
       valA = parseInt((a.현재가 || "0").replace(/,/g, "") || 0, 10);
       valB = parseInt((b.현재가 || "0").replace(/,/g, "") || 0, 10);
@@ -999,7 +856,7 @@ function renderTableRows() {
   const pageRows = filteredStockData.slice(startIndex, startIndex + pageSize);
 
   if (pageRows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="18" style="text-align: center; padding: 2rem; color: var(--text-dim);">검색 및 필터 조건에 부합하는 종목이 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="19" style="text-align: center; padding: 2rem; color: var(--text-dim);">검색 및 필터 조건에 부합하는 종목이 없습니다.</td></tr>`;
     return;
   }
 
@@ -1015,6 +872,14 @@ function renderTableRows() {
       ? '<span class="badge-dual yes">쌍끌이</span>' 
       : '<span class="badge-dual no">-</span>';
 
+    // 매수신호 (이 열이 없는 예전 리포트는 "-" 로 표시)
+    const buySignal = row.매수신호 || "-";
+    const buyReason = row.매수신호사유 || "";
+    let buySignalClass = "signal-none";
+    if (buySignal.startsWith("A")) buySignalClass = "signal-buy";
+    else if (buySignal.startsWith("B")) buySignalClass = "signal-review";
+    else if (buySignal.startsWith("C")) buySignalClass = "signal-avoid";
+
     const overheatText = row.과열여부 || "적정(안전)";
     let overheatBadge = '<span style="color:#10b981; font-weight:600;"><i class="fa-solid fa-shield-check"></i> 적정(안전)</span>';
     if (overheatText.includes("단기과열")) {
@@ -1025,19 +890,15 @@ function renderTableRows() {
       overheatBadge = '<span style="color:#6366f1; font-weight:600;"><i class="fa-solid fa-arrow-trend-down"></i> 이격과도</span>';
     }
 
-    const candleShape = row.차트꼬리 || "양봉 (상승지속)";
-    let candleBadge = `<span style="font-size:0.82rem; color:var(--text-muted);">${candleShape}</span>`;
-    if (candleShape.includes("망치형")) {
-      candleBadge = `<span style="color:#10b981; font-weight:700; font-size:0.82rem;"><i class="fa-solid fa-hammer"></i> 망치형 (강력매수)</span>`;
-    } else if (candleShape.includes("아래꼬리")) {
-      candleBadge = `<span style="color:#10b981; font-weight:600; font-size:0.82rem;"><i class="fa-solid fa-chart-line"></i> 아래꼬리 (눌림반등)</span>`;
-    } else if (candleShape.includes("양봉")) {
-      candleBadge = `<span style="color:#38bdf8; font-weight:600; font-size:0.82rem;"><i class="fa-solid fa-arrow-trend-up"></i> 양봉 (상승지속)</span>`;
-    } else if (candleShape.includes("윗꼬리")) {
-      candleBadge = `<span style="color:#ef4444; font-weight:600; font-size:0.82rem;"><i class="fa-solid fa-cloud-arrow-down"></i> 긴 윗꼬리 (매도압력)</span>`;
-    } else if (candleShape.includes("십자형")) {
-      candleBadge = `<span style="color:#f59e0b; font-weight:600; font-size:0.82rem;"><i class="fa-solid fa-scale-balanced"></i> 십자형 (힘겨루기)</span>`;
-    }
+    // 차트 꼬리: 4단계가 일봉으로 계산한 값. 예전 리포트처럼 값이 없으면 "-"
+    const candleShape = row.차트꼬리 || "";
+    const candleColors = {
+      "장대양봉": "#ef4444", "보통 양봉": "#f87171", "긴 아래꼬리": "#10b981",
+      "십자형": "#f59e0b", "긴 윗꼬리": "#6366f1", "보통 음봉": "#60a5fa", "장대음봉": "#3b82f6"
+    };
+    const candleBadge = candleShape
+      ? `<span style="color:${candleColors[candleShape] || "var(--text-muted)"}; font-weight:600; font-size:0.82rem;">${candleShape}</span>`
+      : `<span style="font-size:0.82rem; color:var(--text-dim);">-</span>`;
 
     const rateVal = row.등락률 || "0.00%";
     const rateColor = rateVal.includes('+') ? '#ef4444' : (rateVal.includes('-') ? '#3b82f6' : 'var(--text-main)');
@@ -1047,6 +908,7 @@ function renderTableRows() {
       <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
       <td><span class="stock-sector-tag">${row.섹터}</span></td>
       <td><span class="badge-grade ${gradeBadgeClass}">${row.투자등급}</span></td>
+      <td title="${buyReason}"><span class="badge-signal ${buySignalClass}">${buySignal}</span>${buyReason ? `<div class="signal-reason">${buyReason}</div>` : ""}</td>
       <td>${row.등급변동}</td>
       <td><span style="font-size:0.82rem; color:var(--text-muted);">${row.변동이유 || "-"}</span></td>
       <td>${candleBadge}</td>
@@ -1121,6 +983,14 @@ function handleGradeSelectChange() {
   applyFiltersAndRenderTable();
 }
 
+function handleSignalSelectChange() {
+  const select = document.getElementById("signalSelectFilter");
+  if (!select) return;
+  currentSignalFilter = select.value;
+  currentPage = 1;
+  applyFiltersAndRenderTable();
+}
+
 function toggleCandleDropdown(e) {
   if (e) e.stopPropagation();
   const container = document.getElementById("candleMultiSelectContainer");
@@ -1188,6 +1058,7 @@ function executeSearchQuery() {
 
 function goHome() {
   currentGradeFilter = DEFAULT_GRADE_FILTER;
+  currentSignalFilter = DEFAULT_SIGNAL_FILTER;
   currentCandleFilter = [...DEFAULT_CANDLE_FILTER];
   currentOverheatFilter = DEFAULT_OVERHEAT_FILTER;
   currentSearchQuery = "";
@@ -1282,10 +1153,6 @@ function loadStrategyContent() {
 
   fetch('docs/stockDesc1.html')
     .then(res => {
-      if (!res.ok) return fetch('stockDesc1.html');
-      return res;
-    })
-    .then(res => {
       if (!res.ok) throw new Error("STRATEGY_HTML_NOT_FOUND");
       return res.text();
     })
@@ -1322,10 +1189,6 @@ function loadPriorityStrategyContent() {
   renderBox.innerHTML = `<div class="report-loading"><i class="fa-solid fa-spinner fa-spin"></i> 매수 우선순위 가이드 HTML을 불러오는 중입니다...</div>`;
 
   fetch('docs/stockDesc2.html')
-    .then(res => {
-      if (!res.ok) return fetch('stockDesc2.html');
-      return res;
-    })
     .then(res => {
       if (!res.ok) throw new Error("PRIORITY_HTML_NOT_FOUND");
       return res.text();
@@ -1419,7 +1282,6 @@ function openStockDetail(code, pushHistory = true) {
 
   const disparityVal = stock["20일이격도"] || "100.0%";
   const overheatVal = stock.과열여부 || "적정(안전)";
-  const targetPriceVal = stock.추천매수가 || `${stock.현재가}원`;
   const phaseVal = stock.추세단계 || "관망(C)";
 
   let overheatGuideText = "🟢 적정 (20일선 안심 눌림목 1차 진입 적기)";
@@ -1433,8 +1295,8 @@ function openStockDetail(code, pushHistory = true) {
 
   document.getElementById("detailDisparity").innerText = disparityVal;
   document.getElementById("detailOverheat").innerText = overheatGuideText;
-  document.getElementById("detailTargetPrice").innerText = targetPriceVal;
-  document.getElementById("detailPhase").innerText = `추세단계: ${phaseVal}`;
+  document.getElementById("detailPhase").innerText = phaseVal;
+  document.getElementById("detailBuySignal").innerText = `매수신호: ${stock.매수신호 || "-"}`;
 
   // 이평선 가격 수치
   document.getElementById("detailMa5").innerText = `${stock.MA5 || "0"}원`;

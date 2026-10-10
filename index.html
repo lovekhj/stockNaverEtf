@@ -131,13 +131,13 @@
           <!-- Candle Shape & Tail Strategy Banner -->
           <div class="strategy-banner guide-banner" style="margin-top: 0.75rem; background: #ffffff; border: 1px solid #e5e9f0; padding: 0.85rem; border-radius: 10px;">
             <div class="banner-title" style="color: #0284c7; font-size: 0.88rem; font-weight: 700; margin-bottom: 0.5rem;">
-              <i class="fa-solid fa-chart-candlestick"></i> 캔들 & 차트 꼬리 매매 판정
+              <i class="fa-solid fa-chart-candlestick"></i> 차트 꼬리 분류 기준 (기준일 일봉)
             </div>
             <div style="font-size: 0.78rem; line-height: 1.5; color: #475569;">
-              <div style="margin-bottom: 0.35rem;"><strong style="color: #059669;">🟢 🔨 망치형/아래꼬리:</strong> 저가 매수 방어 → <strong>강력 매수 타점</strong></div>
-              <div style="margin-bottom: 0.35rem;"><strong style="color: #0284c7;">🟢 📈 양봉 (상승지속):</strong> 시가 대비 종가 상승 → <strong>추세 지속</strong></div>
-              <div style="margin-bottom: 0.35rem;"><strong style="color: #dc2626;">⚠️ 🕯️ 긴 윗꼬리:</strong> 상단 매도세 출회 → <strong>단기 매도/경계</strong></div>
-              <div><strong style="color: #b45309;">🟡 ⚖️ 십자형 (Doji):</strong> 매수/매도 팽팽 → <strong>추세 전환 경계</strong></div>
+              <div style="margin-bottom: 0.35rem;"><strong style="color: #4f46e5;">긴 윗꼬리 / 긴 아래꼬리:</strong> 꼬리가 당일 고가-저가 범위의 50% 이상</div>
+              <div style="margin-bottom: 0.35rem;"><strong style="color: #b45309;">십자형:</strong> 몸통(시가-종가)이 범위의 10% 이하</div>
+              <div style="margin-bottom: 0.35rem;"><strong style="color: #dc2626;">장대양봉 / 장대음봉:</strong> 몸통이 범위의 70% 이상</div>
+              <div><strong style="color: #475569;">보통 양봉 / 보통 음봉:</strong> 그 외. 모양만 분류한 것이며 매매 신호로 검증된 것은 아닙니다</div>
             </div>
           </div>
         </div>
@@ -169,6 +169,14 @@
                   <option value="A">⭐ A 우량 수급주 (0개)</option>
                   <option value="B">🟡 B 일반 수급주 (0개)</option>
                   <option value="C">⚪ C 미달/관망주 (0개)</option>
+                </select>
+
+                <!-- 1-2. Buy Signal (매수신호) Filter Combobox -->
+                <select id="signalSelectFilter" class="grade-combobox-select" onchange="handleSignalSelectChange()" title="강한 마감 + 정배열 후보 규칙. 기준일 종가 매수 기준이며 검증 중입니다.">
+                  <option value="ALL" selected>전체 매수신호 (0개)</option>
+                  <option value="A">A(매수) (0개)</option>
+                  <option value="B">B(재검토) (0개)</option>
+                  <option value="C">C(매수금지) (0개)</option>
                 </select>
 
                 <!-- 2. Candle Tail (차트꼬리) Custom Multi-Select Dropdown -->
@@ -223,6 +231,7 @@
                     <th onclick="sortTable('종목명')">종목명 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('섹터')">대표 섹터 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('투자등급')">투자등급 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('매수신호')" title="강한 마감 + 정배열 후보 규칙. 기준일 종가 매수 기준이며 검증 중입니다.">매수신호 <i class="fa-solid fa-sort"></i></th>
                     <th>등급변동</th>
                     <th>변동이유</th>
                     <th onclick="sortTable('차트꼬리')">차트 꼬리 <i class="fa-solid fa-sort"></i></th>
@@ -367,9 +376,9 @@
             <div class="kpi-card card-a">
               <div class="kpi-icon"><i class="fa-solid fa-bullseye"></i></div>
               <div class="kpi-info">
-                <span class="kpi-label">권장 매수 진입가 (MA20~MA5)</span>
-                <span class="kpi-value" id="detailTargetPrice">0원</span>
-                <span class="kpi-sub" id="detailPhase">추세단계: 정배열가속</span>
+                <span class="kpi-label">추세단계</span>
+                <span class="kpi-value" id="detailPhase">-</span>
+                <span class="kpi-sub" id="detailBuySignal">매수신호: -</span>
               </div>
             </div>
           </div>

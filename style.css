@@ -1023,6 +1023,14 @@ body {
 .grade-b { background: var(--color-b-bg); color: var(--color-b); border: 1px solid rgba(59, 130, 246, 0.4); }
 .grade-c { background: var(--color-c-bg); color: var(--color-c); border: 1px solid rgba(100, 116, 139, 0.4); }
 
+/* 매수신호 (강한 마감 + 정배열 후보 규칙) */
+.badge-signal { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 6px; font-weight: 800; font-size: 0.8rem; white-space: nowrap; }
+.signal-buy { background: rgba(239, 68, 68, 0.12); color: #dc2626; border: 1px solid rgba(239, 68, 68, 0.4); }
+.signal-review { background: var(--color-a-bg); color: var(--color-a); border: 1px solid rgba(245, 158, 11, 0.4); }
+.signal-avoid { background: var(--color-c-bg); color: var(--color-c); border: 1px solid rgba(100, 116, 139, 0.4); }
+.signal-none { color: var(--text-dim); }
+.signal-reason { margin-top: 0.25rem; font-size: 0.72rem; color: var(--text-muted); white-space: nowrap; }
+
 .badge-dual {
   padding: 0.15rem 0.5rem;
   border-radius: 4px;

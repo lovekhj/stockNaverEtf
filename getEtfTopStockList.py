@@ -95,6 +95,14 @@ def is_valid_stock(name):
     
     return True
 
+def is_domestic_code(code):
+    """
+    국내 주식 종목코드(6자리, 숫자로 시작)인지 확인합니다.
+    'NVDA', '9434' 처럼 검색 API가 돌려준 해외 종목코드와 빈 값을 걸러냅니다.
+    (예: '005930', '0126Z0', '00680K' -> True)
+    """
+    return bool(re.fullmatch(r"\d[0-9A-Z]{5}", code or ""))
+
 def get_stock_code(name):
     """
     네이버 증권 자동완성/검색 API를 통해 종목명의 '6자리 주식 종목코드'를 조회합니다.
@@ -134,28 +142,6 @@ def get_stock_code(name):
     except Exception:
         CODE_CACHE[name] = ""
         return ""
-
-def main():
-    """
-    [3단계] 국내 주도주 종목 정제 및 코드 매핑 메인 실행 함수입니다.
-    """
-    default_input = "data/etf_dtl_list.csv" if os.path.exists("data/etf_dtl_list.csv") else "etf_dtl_list.csv"
-    
-    parser = argparse.ArgumentParser(description="[3단계] 주도주 종목 정제 및 6자리 종목코드 매핑 스크립트")
-    parser.add_argument("--input-csv", type=str, default=default_input, help=f"2단계에서 생성한 CSV 경로 (기본값: {default_input})")
-    parser.add_argument("--save-csv", type=str, default="data/etf_top_stocks.csv", help="저장할 CSV 파일 경로 (기본값: data/etf_top_stocks.csv)")
-    parser.add_argument("--include-rank", action="store_true", help="결과에 인기 순위 번호 포함 여부")
-    args = parser.parse_args()
-
-    # 1. 2단계 `data/etf_dtl_list.csv` 파일 불러오기
-    try:
-        with open(args.input_csv, "r", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
-    except Exception as e:
-        print(f"[❌ 오류] '{args.input_csv}' 파일을 읽는 도중 에러가 발생했습니다: {e}")
-        print("💡 팁: 2단계 스크립트(getEtfDtlList.py)를 먼저 실행했는지 확인하세요.")
-        sys.exit(1)
 
 SECTOR_RULES = [
     ('반도체/소부장', [r'반도체', r'소부장', r'메모리', r'팹리스', r'파운드리']),
@@ -251,8 +237,12 @@ def main():
     # 3. 선별된 종목마다 네이버 API를 통해 6자리 종목코드 및 상세페이지 주소 매핑
     for rank, (stk_name, count) in enumerate(sorted_stocks, 1):
         code = get_stock_code(stk_name)
+        if not is_domestic_code(code):
+            # 해외 종목이나 코드를 찾지 못한 종목은 4단계에서 조회할 수 없으므로 뺀다
+            print(f"⏭️ 국내 종목코드가 아니어서 제외: {stk_name} (코드: '{code}')")
+            continue
         sector = determine_sector(stk_name, stock_etfs)
-        detail_url = f"https://stock.naver.com/domestic/stock/{code}/price" if code else ""
+        detail_url = f"https://stock.naver.com/domestic/stock/{code}/price"
         
         row_dict = {
             "종목코드": code,

@@ -43,7 +43,15 @@ import sys             # 프로그램 시스템 제어 라이브러리
 import time            # 연속 접속 시 대기시간(sleep) 도구
 import os              # 디렉토리 생성 및 파일 검색 라이브러리
 import glob            # 폴더 내 패턴(분석_*.csv)에 맞는 파일들을 찾아주는 라이브러리
-from datetime import datetime # 오늘 날짜(YYYYMMDD) 계산 라이브러리
+from datetime import datetime, timedelta # 오늘 날짜(YYYYMMDD) 계산 라이브러리
+
+from getStockHistory import fetch_daily_prices  # 수정주가 일봉 수집 (백테스트와 같은 출처)
+from buySignal import judge_bars, SIGNAL_NONE, SIGNAL_BUY, SIGNAL_REVIEW
+
+CHART_LOOKBACK_DAYS = 260   # 일봉을 받는 기간 (달력 일수)
+CANDLE_LONG_TAIL = 0.5      # 긴 꼬리: 꼬리가 당일 범위에서 차지하는 비율 하한
+CANDLE_DOJI_BODY = 0.1      # 십자형: 몸통 비율 상한
+CANDLE_LONG_BODY = 0.7      # 장대봉: 몸통 비율 하한
 
 def parse_quant(quant_str):
     """
@@ -102,6 +110,7 @@ def fetch_investor_trend(code, page_size=5):
     :param code: 6자리 주식 종목코드 (예: '011200')
     :param page_size: 수집할 일수 (기본값: 최근 5일)
     :return: (외국인 연속매수일수, 기관 연속매수일수, 최근 3일 외인순매수 합, 최근 3일 기관순매수 합, 외국인보유율, 현재가)
+             수집에 실패했거나 데이터가 없으면 None ("순매수 없음"인 0과 구분하기 위함)
     """
     url = f"https://m.stock.naver.com/api/stock/{code}/trend?page=1&pageSize={page_size}"
     headers = {
@@ -122,7 +131,7 @@ def fetch_investor_trend(code, page_size=5):
                 trends = []
 
             if not trends:
-                return 0, 0, 0, 0, "0.0%", "0"
+                return None
 
             # 가장 최근일의 현재가 및 외국인 소진율(보유율)
             latest = trends[0]
@@ -157,56 +166,39 @@ def fetch_investor_trend(code, page_size=5):
             return foreign_seq, organ_seq, f_sum_3, o_sum_3, foreign_ratio, close_price
 
     except Exception:
-        return 0, 0, 0, 0, "0.0%", "0"
+        return None
 
-def fetch_moving_averages(code):
+def fetch_chart_bars(code, target_date):
     """
-    네이버 증권 시세 API를 호출하여 최근 120일간의 일별 종가를 수집하고, 
-    추세추종 핵심 차트지표인 5일, 20일, 60일, 120일 이동평균선(MA)을 계산합니다.
+    기준일자까지의 수정주가 일봉을 받습니다. 이평선, 등락률, 차트 꼬리, 매수신호를 모두 이 일봉으로 계산합니다.
+    (시세 API는 수정주가가 아니고, 최근 하루의 시가·거래량·전일 대비가 한국거래소 종가 기준과 달라서 쓰지 않습니다)
+
+    :param code: 6자리 주식 종목코드
+    :param target_date: 기준 거래일자 (YYYYMMDD)
+    :return: [(YYYYMMDD, 시가, 고가, 저가, 종가, 거래량), ...] 날짜 오름차순. 실패 시 None
     """
-    # 120일 이상의 이동평균선을 계산하기 위해 최근 120개 일별 가격 데이터를 수집
-    prices = []
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
+    # 120일선 계산에 120거래일이 필요하므로 달력으로 넉넉히 260일을 받는다
+    start_date = (datetime.strptime(target_date, "%Y%m%d") - timedelta(days=CHART_LOOKBACK_DAYS)).strftime("%Y%m%d")
+    return fetch_daily_prices(code, start_date, target_date)
 
-    chg_rate = "0.00%"
-    # 1페이지당 60개씩 총 2페이지(120일분) 수집
-    for page in (1, 2):
-        url = f"https://m.stock.naver.com/api/stock/{code}/price?page={page}&pageSize=60"
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req) as res:
-                data = json.loads(res.read().decode("utf-8"))
-                p_list = data if isinstance(data, list) else data.get("result", [])
-                if page == 1 and p_list and len(p_list) > 0:
-                    item0 = p_list[0]
-                    ratio = item0.get("fluctuationsRatio", "0.00")
-                    chg_info = item0.get("compareToPreviousPrice", {})
-                    chg_code = chg_info.get("code", "3")
-                    if chg_code == "2":
-                        chg_rate = f"+{ratio}%"
-                    elif chg_code == "5":
-                        chg_rate = f"-{ratio}%"
-                    else:
-                        chg_rate = f"{ratio}%"
-                for item in p_list:
-                    cp_str = item.get("closePrice", "0").replace(',', '').strip()
-                    if cp_str.isdigit() and int(cp_str) > 0:
-                        prices.append(int(cp_str))
-        except Exception:
-            pass
-
+def analyze_moving_averages(bars):
+    """
+    수정주가 일봉으로 추세추종 핵심 차트지표인 5일, 20일, 60일, 120일 이동평균선(MA)과 등락률을 계산합니다.
+    """
+    prices = [b[4] for b in bars if b[4] > 0]
     if len(prices) < 20:
         return None  # 데이터 부족 시 계산 불가능
 
-    current_price = prices[0] # 오늘 종가 (현재가)
-    
+    current_price = prices[-1] # 기준일자 종가 (현재가)
+
+    # 등락률: 전일 종가 대비 (한국거래소 종가 기준)
+    chg_rate = f"{(current_price / prices[-2] - 1) * 100:+.2f}%"
+
     # 각 이동평균선(MA) 계산 (최근 N일간의 종가 평균)
-    ma5 = sum(prices[:5]) / 5.0 if len(prices) >= 5 else 0
-    ma20 = sum(prices[:20]) / 20.0 if len(prices) >= 20 else 0
-    ma60 = sum(prices[:60]) / 60.0 if len(prices) >= 60 else 0
-    ma120 = sum(prices[:120]) / 120.0 if len(prices) >= 120 else 0
+    ma5 = sum(prices[-5:]) / 5.0 if len(prices) >= 5 else 0
+    ma20 = sum(prices[-20:]) / 20.0 if len(prices) >= 20 else 0
+    ma60 = sum(prices[-60:]) / 60.0 if len(prices) >= 60 else 0
+    ma120 = sum(prices[-120:]) / 120.0 if len(prices) >= 120 else 0
 
     # 20일 이동평균선 상회 여부 (20일선 위 = 상승 추세 기본 조건)
     above_ma20 = (current_price >= ma20) if ma20 > 0 else False
@@ -226,6 +218,41 @@ def fetch_moving_averages(code):
         "ma60": ma60,
         "ma120": ma120
     }
+
+def classify_candle(open_p, high_p, low_p, close_p):
+    """
+    하루 일봉의 시가·고가·저가·종가로 캔들 모양을 분류합니다.
+    꼬리와 몸통이 당일 범위(고가 - 저가)에서 차지하는 비율로 나눕니다.
+
+    :return: 캔들 모양 문자열. 거래가 없어 판정할 수 없으면 빈 문자열
+    """
+    spread = high_p - low_p
+    if open_p <= 0 or spread <= 0:
+        return ""  # 거래정지이거나 하루 종일 한 가격
+    body = abs(close_p - open_p) / spread
+    upper_tail = (high_p - max(open_p, close_p)) / spread
+    lower_tail = (min(open_p, close_p) - low_p) / spread
+    is_up = close_p >= open_p
+
+    if upper_tail >= CANDLE_LONG_TAIL:
+        return "긴 윗꼬리"
+    if lower_tail >= CANDLE_LONG_TAIL:
+        return "긴 아래꼬리"
+    if body <= CANDLE_DOJI_BODY:
+        return "십자형"
+    if body >= CANDLE_LONG_BODY:
+        return "장대양봉" if is_up else "장대음봉"
+    return "보통 양봉" if is_up else "보통 음봉"
+
+def judge_buy_signal(bars, target_date):
+    """
+    기준일자 종가 기준의 매수신호(A/B/C)와 사유를 돌려줍니다.
+
+    :return: (매수신호, 사유)
+    """
+    if bars[-1][0] != target_date:
+        return SIGNAL_NONE, f"기준일자 일봉 없음 (최근 {bars[-1][0]})"
+    return judge_bars([b[4] for b in bars], [b[5] for b in bars])
 
 def find_latest_previous_file(today_str):
     """
@@ -374,6 +401,8 @@ def main():
     print("📊 실시간 외국인/기관 수급 및 5/20/60/120일 이동평균선 수집/분석을 시작합니다...\n")
 
     analyzed_rows = []
+    flow_failed = []   # 수급을 받지 못한 종목 (등급은 수급 없음으로 계산됨)
+    price_failed = []  # 일봉을 받지 못해 결과에서 빠진 종목
     start_time = time.time()
 
     # 3. 320개 주도주 종목별 실시간 수급 및 차트 이동평균선 분석
@@ -386,16 +415,24 @@ def main():
         if not code:
             continue
 
-        # 수급 데이터 (외인/기관 연속 매수일) 수집
-        f_seq, o_seq, f_sum3, o_sum3, f_ratio, trend_price = fetch_investor_trend(code, page_size=5)
+        # 수급 데이터 (외인/기관 연속 매수일) 수집. 실패하면 한 번 더 시도한다
+        trend = fetch_investor_trend(code, page_size=5) or fetch_investor_trend(code, page_size=5)
+        flow_ok = trend is not None
+        if flow_ok:
+            f_seq, o_seq, f_sum3, o_sum3, f_ratio, _ = trend
+        else:
+            f_seq, o_seq, f_sum3, o_sum3 = 0, 0, 0, 0
+            flow_failed.append(f"[{code}] {name}")
 
-        # 이동평균선 (MA5, MA20, MA60, MA120) 계산
-        ma_info = fetch_moving_averages(code)
+        # 수정주가 일봉 수집 후 이동평균선 (MA5, MA20, MA60, MA120) 계산
+        bars = fetch_chart_bars(code, target_date)
+        ma_info = analyze_moving_averages(bars) if bars else None
         if not ma_info:
+            price_failed.append(f"[{code}] {name}")
             time.sleep(args.delay)
             continue
 
-        curr_price_str = f"{ma_info['current_price']:,}"
+        curr_price_str = f"{round(ma_info['current_price']):,}"
         bi_buying = (f_seq >= 1 and o_seq >= 1)  # 외인 & 기관 동시 연속 매수 (쌍끌이) 여부
         bi_str = "O" if bi_buying else "X"
         above_ma20_str = "O" if ma_info['above_ma20'] else "X"
@@ -409,11 +446,12 @@ def main():
         grade_change, change_reason = evaluate_grade_change(
             prev_grade, current_grade, ma_info['is_aligned'], ma_info['above_ma20'], bi_buying
         )
+        if not flow_ok:
+            change_reason = f"{change_reason} (수급 수집 실패)"
 
-        # 20일 이격도(%) 및 과열/추세단계/추천매수가 산출
+        # 20일 이격도(%) 및 과열/추세단계 산출
         curr_price_val = ma_info['current_price']
         ma20_val = ma_info['ma20']
-        ma5_val = ma_info['ma5']
         
         if ma20_val > 0:
             disparity = round((curr_price_val / ma20_val) * 100, 1)
@@ -429,7 +467,11 @@ def main():
         else:
             overheat_str = "이격과도(눌림)"
 
-        if disparity >= 115.0:
+        # 매수신호 (강한 마감 + 정배열 후보 규칙, 기준일자 종가 매수 기준)
+        buy_signal, buy_reason = judge_buy_signal(bars, target_date)
+
+        # 매수신호 A 종목에는 "추격금지" 문구를 쓰지 않는다 (같은 줄에 매수와 추격금지가 함께 뜨는 것을 막음)
+        if disparity >= 115.0 and buy_signal != SIGNAL_BUY:
             phase_str = "단기과열 (추격금지)"
         elif current_grade == "A+" and disparity < 110.0:
             phase_str = "정배열가속(A+)"
@@ -437,39 +479,40 @@ def main():
             phase_str = "고점지속(A+)"
         elif current_grade == "A":
             phase_str = "수급우량(A)"
-        elif bi_buying and ma20_val >= ma_info['ma60']:
+        elif current_grade == "B" and bi_buying and ma20_val >= ma_info['ma60']:
             phase_str = "추세초입(B)"
+        elif current_grade == "B":
+            phase_str = "관찰(B)"
         else:
             phase_str = "관망(C)"
 
-        if ma20_val > 0 and ma5_val > 0:
-            low_p = min(round(ma20_val), round(ma5_val))
-            high_p = max(round(ma20_val), round(ma5_val))
-            target_price_str = f"{low_p:,}원 ~ {high_p:,}원"
-        else:
-            target_price_str = f"{curr_price_str}원"
+        # 차트 꼬리
+        last_bar = bars[-1]
+        candle_str = classify_candle(last_bar[1], last_bar[2], last_bar[3], last_bar[4]) if last_bar[5] > 0 else ""
 
         analyzed_rows.append({
             "종목코드": code,
             "종목명": name,
             "섹터": sector,
             "투자등급": current_grade,
+            "매수신호": buy_signal,
+            "매수신호사유": buy_reason,
             "등락률": ma_info.get("chg_rate", "0.00%"),
             "등급변동": grade_change,
             "변동이유": change_reason,
             "현재가": curr_price_str,
-            "외국인보유율": f_ratio,
-            "쌍끌이여부": bi_str,
-            "외국인연속매수(일)": f_seq,
-            "기관연속매수(일)": o_seq,
-            "최근3일외인순매수": f"{f_sum3:,}",
-            "최근3일기관순매수": f"{o_sum3:,}",
+            "외국인보유율": f_ratio if flow_ok else "-",
+            "쌍끌이여부": bi_str if flow_ok else "-",
+            "외국인연속매수(일)": f_seq if flow_ok else "-",
+            "기관연속매수(일)": o_seq if flow_ok else "-",
+            "최근3일외인순매수": f"{f_sum3:,}" if flow_ok else "-",
+            "최근3일기관순매수": f"{o_sum3:,}" if flow_ok else "-",
             "20일선위": above_ma20_str,
             "정배열여부": aligned_str,
             "20일이격도": f"{disparity}%",
             "과열여부": overheat_str,
             "추세단계": phase_str,
-            "추천매수가": target_price_str,
+            "차트꼬리": candle_str,
             "MA5": f"{round(ma_info['ma5']):,}",
             "MA20": f"{round(ma_info['ma20']):,}",
             "MA60": f"{round(ma_info['ma60']):,}",
@@ -507,12 +550,22 @@ def main():
     
     print(f"\n✅ [분석 완료] 총 {len(analyzed_rows)}개 종목 중 A+등급: {a_plus_count}개 / A등급: {a_count}개 (상향: {upgraded_count}개 / 하향: {downgraded_count}개)")
 
+    buy_rows = [r for r in analyzed_rows if r["매수신호"] == SIGNAL_BUY]
+    review_count = sum(1 for r in analyzed_rows if r["매수신호"] == SIGNAL_REVIEW)
+    print(f"🎯 [매수신호] {SIGNAL_BUY}: {len(buy_rows)}개 / {SIGNAL_REVIEW}: {review_count}개 (기준일자 종가 매수 기준, 검증 중인 후보 규칙)")
+    for r in buy_rows:
+        print(f"   - [{r['종목코드']}] {r['종목명']} {r['현재가']}원 | {r['매수신호사유']}")
+    if flow_failed:
+        print(f"⚠️ [수급 수집 실패] {len(flow_failed)}개 (수급 칸은 '-' 로 저장): {', '.join(flow_failed)}")
+    if price_failed:
+        print(f"⚠️ [일봉 수집 실패] {len(price_failed)}개 (결과에서 제외): {', '.join(price_failed)}")
+
     # 5. `분석/분석_YYYYMMDD.csv` 파일 저장
     if save_csv_path:
         fieldnames = [
-            "종목코드", "종목명", "섹터", "투자등급", "등락률", "등급변동", "변동이유", "현재가", "외국인보유율", "쌍끌이여부",
+            "종목코드", "종목명", "섹터", "투자등급", "매수신호", "매수신호사유", "등락률", "등급변동", "변동이유", "현재가", "외국인보유율", "쌍끌이여부",
             "외국인연속매수(일)", "기관연속매수(일)", "최근3일외인순매수", "최근3일기관순매수",
-            "20일선위", "정배열여부", "20일이격도", "과열여부", "추세단계", "추천매수가",
+            "20일선위", "정배열여부", "20일이격도", "과열여부", "추세단계", "차트꼬리",
             "MA5", "MA20", "MA60", "MA120", "상세페이지"
         ]
         save_dir = os.path.dirname(save_csv_path)

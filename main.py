@@ -22,7 +22,7 @@
    - 특정 단계 지정     : `python3 main.py --step 4,5`
    - 특정 거래일자 지정: `python3 main.py --date 20261006` (미지정 시 최신 장마감 거래일 자동 감지)
    - PDF 리포트 생성   : `python3 main.py --step 5 --pdf` (MD 및 PDF 리포트 동시 생성)
-   - 텔레그램 분석+알림: `python3 main.py --step 4,5 --telegram` (4,5단계 후 A+ 종목 전송)
+   - 텔레그램 분석+알림: `python3 main.py --step 4,5 --telegram` (4,5단계 후 매수신호 A 종목 전송)
    - 텔레그램 단독 발송: `python3 main.py --telegram-only` (분석 없이 기존 리포트만 전송)
    - 깃허브 자동 푸시   : `python3 main.py --push-git` (리포트/결과 파일 GitHub Push: "주식분석_자동화_YYYYMMDD")
    - 깃푸시 단독 실행   : `python3 main.py --push-git-only` (분석 없이 Git 커밋 및 Push만 진행)
@@ -238,13 +238,51 @@ def send_telegram_pdf_document(bot_token, chat_id, pdf_path):
     except Exception as e:
         return False, f"PDF 전송 중 예외 발생 ({e})"
 
+TELEGRAM_MAX_STOCKS = 40  # 메세지 한 통에 싣는 최대 종목 수 (텔레그램 글자 수 제한 4,096자 대비)
+
+def build_signal_message(report_file, date_str):
+    """
+    4단계 분석 CSV에서 매수신호 A 종목을 뽑아 텔레그램 요약 메세지를 만듭니다.
+
+    :return: (메세지 문자열, 매수신호 A 종목 수)
+    """
+    signal_stocks = []
+    grade_counts = {}
+    with open(report_file, "r", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            grade = row.get("투자등급", "").strip()
+            grade_counts[grade] = grade_counts.get(grade, 0) + 1
+            if row.get("매수신호", "").strip().startswith("A"):
+                signal_stocks.append(row)
+
+    lines = [f"🎯 <b>[매수신호 A 알림 - {date_str}]</b>",
+             "강한 마감(+3% 이상, 거래량 1.5배 이상) + 정배열(종가 > 5 > 20 > 60일선)", ""]
+    if signal_stocks:
+        lines.append(f"<b>[매수신호 A 종목 {len(signal_stocks)}개]</b>")
+        for idx, row in enumerate(signal_stocks[:TELEGRAM_MAX_STOCKS], 1):
+            name = row.get("종목명", "").strip()
+            sector = row.get("섹터", "").strip() or "일반 주도주"
+            price = row.get("현재가", "").strip() or "0"
+            chg = row.get("등락률", "").strip() or "-"
+            candle = row.get("차트꼬리", "").strip() or "-"
+            lines.append(f"{idx}. <b>{name}</b> / {sector} / {price}원 / {chg} / {candle} / 등급 {row.get('투자등급', '-').strip()}")
+        if len(signal_stocks) > TELEGRAM_MAX_STOCKS:
+            lines.append(f"... 외 {len(signal_stocks) - TELEGRAM_MAX_STOCKS}개 (대시보드에서 확인)")
+    else:
+        lines.append("ℹ️ 오늘 매수신호 A 종목이 없습니다.")
+
+    lines.append("")
+    lines.append(f"투자등급 분포: A+ {grade_counts.get('A+', 0)}개 / A {grade_counts.get('A', 0)}개 / B {grade_counts.get('B', 0)}개 / C {grade_counts.get('C', 0)}개")
+    lines.append("※ 기준일 종가 매수 기준, 검증 중인 후보 규칙입니다. 매도는 종가가 보유 중 최고 종가 -5% 이하일 때. 매수·매도 추천이 아닙니다.")
+    return "\n".join(lines), len(signal_stocks)
+
 def send_telegram_notification(bot_token, chat_id, target_date=None, send_pdf=False):
     """
     ============================================================================
     📌 [텔레그램 메세지 및 PDF 리포트 통합 전송 함수]
     ============================================================================
     1. 역할:
-       - 4단계 분석 결과를 바탕으로 포착된 A+ 등급 핵심 주도주 요약 텍스트(`종목명 - 섹터`)를 발송합니다.
+       - 4단계 분석 결과에서 매수신호 A 종목 요약 텍스트를 발송합니다.
        - `pdf/report_YYYYMMDD.pdf` 파일이 존재하거나 `--pdf` 옵션이 지정된 경우
          PDF 종합 보고서 파일도 텔레그램 대화방에 자동으로 첨부하여 발송합니다.
     """
@@ -274,83 +312,14 @@ def send_telegram_notification(bot_token, chat_id, target_date=None, send_pdf=Fa
 
     date_str = os.path.basename(report_file).replace("report_", "").replace(".csv", "")
     
-    # 3. CSV 파일 읽어 A+ 등급 주도주 추출 및 섹터 모멘텀 산출
-    aplus_stocks = []
-    a_stocks = []
-    sector_scores = {}
+    # 3~4. CSV 파일을 읽어 매수신호 A 종목 요약 메세지 조립
     try:
-        with open(report_file, "r", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                grade = row.get("투자등급", "").strip()
-                code = row.get("종목코드", "").strip()
-                name = row.get("종목명", "").strip()
-                sector = row.get("주요섹터", row.get("섹터", "")).strip() or "일반 주도주"
-                overheat = row.get("과열여부", "적정(안전)").strip() or "적정(안전)"
-                phase = row.get("추세단계", "정배열가속(A+)").strip() or "정배열가속(A+)"
-                price = row.get("현재가", "").strip()
-                chg = row.get("등락률", "").strip()
-
-                if sector not in sector_scores:
-                    sector_scores[sector] = {"aplus": 0, "a": 0, "score": 0.0}
-                if grade == "A+":
-                    sector_scores[sector]["aplus"] += 1
-                    sector_scores[sector]["score"] += 3.0
-                elif grade == "A":
-                    sector_scores[sector]["a"] += 1
-                    sector_scores[sector]["score"] += 1.0
-                
-                # CSV에 등락률이 없는 경우 네이버 API에서 실시간 등락률 보충
-                if grade == "A+" and not chg and code:
-                    try:
-                        u_tmp = f"https://m.stock.naver.com/api/stock/{code}/price?page=1&pageSize=1"
-                        req_t = urllib.request.Request(u_tmp, headers={"User-Agent": "Mozilla/5.0"})
-                        with urllib.request.urlopen(req_t, timeout=3) as res_t:
-                            d_t = json.loads(res_t.read().decode("utf-8"))
-                            item_t = d_t[0] if isinstance(d_t, list) else d_t.get("result", [])[0]
-                            ratio_t = item_t.get("fluctuationsRatio", "0.00")
-                            code_t = item_t.get("compareToPreviousPrice", {}).get("code", "3")
-                            if code_t == "2":
-                                chg = f"+{ratio_t}%"
-                            elif code_t == "5":
-                                chg = f"-{ratio_t}%"
-                            else:
-                                chg = f"{ratio_t}%"
-                    except Exception:
-                        chg = ""
-                
-                if grade == "A+":
-                    aplus_stocks.append((code, name, sector, overheat, phase, price, chg))
-                elif grade == "A":
-                    a_stocks.append((code, name, sector, overheat, phase, price, chg))
+        message_text, signal_count = build_signal_message(report_file, date_str)
     except Exception as e:
         msg = f"CSV 읽기 예외 ({e})"
         print(f"⚠️ [텔레그램 오류] {msg}")
         return False, msg
 
-    top_sectors = sorted(sector_scores.items(), key=lambda x: (x[1]["score"], x[1]["aplus"], x[1]["a"]), reverse=True)[:3]
-
-    # 4. 요약 텍스트 메세지 내용 조립
-    lines = [f"🚀 <b>[A+ 주도주 알림 - {date_str}]</b>", ""]
-    
-    if top_sectors:
-        lines.append("🔥 <b>[오늘의 TOP 주도 섹터]</b>")
-        for rank, (sec, s_info) in enumerate(top_sectors, 1):
-            lines.append(f"  {rank}위: <b>{sec}</b> (A+ {s_info['aplus']}개 / A {s_info['a']}개)")
-        lines.append("")
-
-    lines.append("🏆 <b>[A+ 핵심 주도주 목록]</b>")
-    if aplus_stocks:
-        for idx, (code, name, sector, overheat, phase, price, chg) in enumerate(aplus_stocks, 1):
-            sec_info = sector if sector else "일반 주도주"
-            prc_info = f"{price}원" if price and not price.endswith("원") else (price if price else "0원")
-            chg_info = chg if chg else "-"
-            lines.append(f"{idx}. <b>{name}</b> / {sec_info} / {overheat} / {phase} / {prc_info} / {chg_info}")
-    else:
-        lines.append("ℹ️ 오늘 포착된 A+ 등급 종목이 없습니다.")
-
-    message_text = "\n".join(lines)
-    
     # 5. 텔레그램 요약 메세지 발송 (sendMessage API)
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     payload = {
@@ -369,7 +338,7 @@ def send_telegram_notification(bot_token, chat_id, target_date=None, send_pdf=Fa
         with urllib.request.urlopen(req, timeout=10) as response:
             res_body = json.loads(response.read().decode("utf-8"))
             if res_body.get("ok"):
-                desc = f"A+ 등급 {len(aplus_stocks)}개 전송 완료"
+                desc = f"매수신호 A {signal_count}개 전송 완료"
                 print(f"📲 [텔레그램 메세지 전송 성공] {desc}")
                 text_sent = True
             else:
@@ -388,7 +357,7 @@ def send_telegram_notification(bot_token, chat_id, target_date=None, send_pdf=Fa
         else:
             print(f"⚠️ [텔레그램 PDF 전송 경고] {pdf_msg}")
 
-    final_desc = f"A+ 등급 {len(aplus_stocks)}개 전송 완료{pdf_status}"
+    final_desc = f"매수신호 A {signal_count}개 전송 완료{pdf_status}"
     return text_sent, final_desc
 
 def run_git_auto_push(target_date=None):
