@@ -17,6 +17,12 @@
    - [5단계] `getEtfAiReport.py`  : 추세추종 분석 마크다운/PDF 리포트 자동 생성 -> reports/report_YYYYMMDD.md & pdf/report_YYYYMMDD.pdf
    - [가상 거래] `virtualTrade.py` : 가상 주식거래 장부에 하루치 기록 -> reports/virtual_trades.csv
                                    (4단계나 5단계를 돌린 날 자동 실행. 실패해도 나머지 단계는 계속 진행)
+   - [종목-테마] `getStockThemes.py`: 네이버 증권 테마에서 종목-테마 연결 수집 -> data/stock_theme_matrix.csv
+                                   (이 프로그램에 연결되어 있지 않습니다. 따로 실행합니다. 약 1분)
+                                   · 대시보드의 "종목-테마" 화면이 이 파일과 data/etf_top_stocks.csv 를 읽습니다.
+                                   · 테마 구성은 자주 바뀌지 않으므로 가끔(주 1회 정도) 돌리고,
+                                     3단계로 대상 종목이 바뀌면 다시 돌립니다.
+                                   · 네이버가 쓴 테마 설명과 편입 사유는 stockdata/ 에만 저장합니다 (공개하지 않음).
 
 3. 매일 장 마감 후 실행 순서 (`python3 main.py --step 4,5 --telegram --push-git`):
    4단계 -> 5단계 -> 가상 거래 -> 대시보드 날짜 목록 갱신 -> 텔레그램 -> Git 커밋·푸시
@@ -49,6 +55,7 @@
    - 깃푸시 단독 실행   : `python3 main.py --push-git-only` (분석 없이 Git 커밋 및 Push만 진행)
    - 맥 4시 자동스케줄러: `python3 main.py --step 4,5 --telegram --push-git` (통합 실행)
    - 가상 거래만 실행   : `python3 virtualTrade.py --date 20261008`
+   - 종목-테마 수집     : `python3 getStockThemes.py` (main.py 와 별개로 실행)
 ================================================================================
 """
 

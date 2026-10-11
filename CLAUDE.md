@@ -26,6 +26,8 @@ Python 표준 라이브러리만 쓴다. `pip install`이 필요 없다. 테스�
 | `python3 main.py --step 4,5` | 일봉 분석과 리포트만 (매일 장 마감 후) |
 | `python3 getEtfInvestorFlow.py` | 4단계(일봉 분석: 이평선, 매수신호, 추세 통과)만 단독 실행 |
 | `python3 virtualTrade.py --date YYYYMMDD` | 가상 주식거래 장부에 하루치 기록 (`main.py`가 4·5단계 뒤에 자동 실행) |
+| `python3 getStockThemes.py` | 종목-테마 연결을 `data/stock_theme_matrix.csv`에 수집 (약 1분, 가끔 실행. `main.py`에 연결되어 있지 않음) |
+| `python3 exportStockNotes.py` | 옵시디언용 종목·테마 노트를 `stocks/`에 만듦 (git 제외. 실행할 때마다 `stocks/종목/`, `stocks/테마/`를 비우고 새로 씀) |
 | `python3 getStockHistory.py --all --index` | 검증용 과거 일봉·수급을 `stockdata/`에 수집 (약 20분, git 제외) |
 | `python3 checkSignalReturns.py` | 검증: 조건별 5·10일 뒤 수익률 |
 | `python3 backtestTrendRules.py` | 검증: 매수 조건 × 매도 규칙 백테스트 |
@@ -46,6 +48,8 @@ Python 표준 라이브러리만 쓴다. `pip install`이 필요 없다. 테스�
 리포트의 `매수신호`(A/B/C) 열은 검증 중인 후보 규칙(A = 강한 마감 + 추세 통과)이며 `buySignal.py`에 정의한다. 2026-10-10에 정배열 대신 추세 통과로 바꿨다(`docs/종목선정_검증.md` 14번). 대시보드는 `index.html`, `app.js`, `style.css`(정적 페이지, GitHub Pages)다.
 
 종목의 시장(코스피/코스닥)과 섹터는 `data/stock_sectors.csv`에서 읽는다(네이버 업종을 15개 섹터로 묶은 것, `분류기준`이 "수동"인 줄은 손으로 고친 것). 이 파일을 만드는 스크립트는 저장소에 없으므로 3단계로 대상 종목이 바뀌면 다시 만들어야 한다. 대시보드의 "섹터별 종목조회"와 "주도주" 화면은 리포트의 `추세통과`·`3개월수익률`·`고점대비`·`강한마감` 열로 섹터 순위를 매기고, "하루 일지" 화면은 여기에 `전일통과`·`거래량배수` 열을 더해 그날의 움직임을 숫자로 적는다(이유는 싣지 않는다). 이 기준(`buySignal.py`의 `judge_trend`)은 과거 데이터로 검증하지 않았다. 섹터 순위 계산은 `app.js`의 `buildSectorRanking`과 `getEtfAiReport.py`의 `rank_sectors` 두 곳에 있으므로 기준을 바꿀 때는 함께 고친다.
+
+대시보드의 "종목-테마" 화면은 `data/stock_theme_matrix.csv`(네이버 증권 테마, 연결 하나가 한 줄)를 읽어 종목별 테마와 테마별 종목을 보여 준다. 날짜와 관계없이 마지막으로 받은 구성이다. 우선주는 보통주의 테마를 물려받는다. 네이버가 쓴 테마 설명과 편입 사유는 `stockdata/`에만 저장한다(공개하지 않음). 나중에 바깥 지표(예: 필라델피아 반도체)와 테마를 잇는 바탕 데이터로 쓸 예정이다. "하루 일지"의 "강한 마감이 몰린 테마" 표도 이 파일로 그날 리포트를 테마별로 묶는다(대상 종목 3개 이상 30개 미만인 테마만, 우선주 제외, 기준은 `app.js`의 `renderJournalThemes`). 테마 구성이 받은 때 기준이라 지난 날짜에도 지금 구성으로 세며, 검증하지 않은 참고용 숫자다.
 
 `virtualTrade.py`는 모의 포워드 테스트다. 매수신호 A인 종목을 그날 종가에 100만 원어치 샀다고 치고, 종가가 손절가(보유 중 최고 종가 -5%) 이하인 날 종가에 팔았다고 쳐서 `reports/virtual_trades.csv`에 날짜별·종목별로 쌓는다. 날짜 순서대로 실행해야 하고, 같은 날짜를 다시 돌리면 그날 기록만 새로 쓴다. 대시보드의 "가상 주식거래 리포트" 화면이 이 파일을 읽는다.
 

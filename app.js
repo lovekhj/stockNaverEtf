@@ -38,9 +38,17 @@ let currentSignalFilter = DEFAULT_SIGNAL_FILTER;
 let currentCandleFilter = [...DEFAULT_CANDLE_FILTER];
 let currentSearchQuery = "";
 let selectedSector = null; // 섹터별 종목조회 화면에서 고른 섹터
-let lastListView = "sector"; // 종목 상세나 날짜 선택 뒤에 돌아갈 목록 화면 (sector, leaders, journal, dashboard, virtual)
+let lastListView = "sector"; // 종목 상세나 날짜 선택 뒤에 돌아갈 목록 화면 (sector, leaders, journal, dashboard, themes, virtual)
 let virtualTrades = [];      // 가상 주식거래 장부 (reports/virtual_trades.csv) 전체
 let selectedVirtualCode = null; // 가상 주식거래 화면에서 일별 기록을 보려고 고른 종목
+let themeLinks = [];         // 종목-테마 연결 (data/stock_theme_matrix.csv), 한 줄에 연결 하나
+let themeTargetStocks = [];  // 대상 종목 전체 (data/etf_top_stocks.csv). 테마 없는 종목도 보여 주려고 읽는다
+let themeMode = "stock";     // 종목-테마 화면의 보기 방식 (stock = 종목별 테마, theme = 테마별 종목)
+
+// 하루 일지의 테마 표: 대상 종목이 이 범위인 테마만 센다 (너무 좁으면 몰림을 볼 수 없고, 너무 넓으면 시장 전체와 같아진다)
+const JOURNAL_THEME_MIN_STOCKS = 3;
+const JOURNAL_THEME_MAX_STOCKS = 30;
+const JOURNAL_THEME_ROWS = 15;
 
 // Pagination State
 let currentPage = 1;
@@ -66,7 +74,31 @@ document.addEventListener("DOMContentLoaded", () => {
   loadDateExplorer();
   loadDashboardData(currentDate);
   loadVirtualTrades();
+  restoreViewState();
+  loadThemeMatrix();
 });
+
+/**
+ * 1-1. 페이지가 다시 불려도(새로고침, 편집기의 자동 새로고침) 보던 화면으로 돌아오도록 탭 안에 기억해 둔다
+ */
+function saveViewState(key, value) {
+  try { sessionStorage.setItem(key, value); } catch (e) {}
+}
+
+function readViewState(key) {
+  try { return sessionStorage.getItem(key); } catch (e) { return null; }
+}
+
+function restoreViewState() {
+  themeMode = readViewState("themeMode") === "theme" ? "theme" : "stock";
+  document.getElementById("themeSearchInput").value = readViewState("themeQuery") || "";
+  const sizeFilter = document.getElementById("themeSizeFilter");
+  const savedSize = readViewState("themeSize");
+  if ([...sizeFilter.options].some(o => o.value === savedSize)) sizeFilter.value = savedSize;
+
+  const savedView = readViewState("view");
+  if (['dashboard', 'sector', 'leaders', 'journal', 'themes', 'virtual', 'rules'].includes(savedView)) switchView(savedView);
+}
 
 /**
  * 2. 인터랙티브 년/월 그리드 달력 위젯 (Calendar Widget)
@@ -644,6 +676,7 @@ function renderJournalView() {
   if (rows.length === 0) {
     ["journalUpDown", "journalFlat", "journalAvgChange", "journalMedianChange", "journalPassCount", "journalPassDiff", "journalStrong"].forEach(id => setText(id, "-"));
     sectorBody.innerHTML = emptyRow(7, "이 날짜의 리포트에는 일지에 쓸 통계가 없습니다.");
+    document.getElementById("journalThemeBody").innerHTML = emptyRow(7, "-");
     ["journalGainersBody", "journalLosersBody"].forEach(id => { document.getElementById(id).innerHTML = emptyRow(10, "-"); });
     document.getElementById("journalPassChangeBody").innerHTML = emptyRow(2, "-");
     renderJournalVirtual();
@@ -695,6 +728,8 @@ function renderJournalView() {
       sectorBody.appendChild(tr);
     });
 
+  renderJournalThemes(rows, hasPrev);
+
   // 3. 크게 움직인 종목
   const moverRow = d => {
     const buySignal = d.매수신호 || "-";
@@ -736,6 +771,54 @@ function renderJournalView() {
   }
 
   renderJournalVirtual();
+}
+
+/**
+ * 하루 일지의 테마 표: 종목-테마 연결(themeLinks)로 그날 리포트를 테마별로 묶어 강한 마감이 몰린 테마를 위에 둔다.
+ * rows 는 그날 거래가 있었던 종목 (chg = 등락률 숫자)
+ */
+function renderJournalThemes(rows, hasPrev) {
+  const body = document.getElementById("journalThemeBody");
+  const emptyRow = text => `<tr><td colspan="7" style="text-align: center; padding: 1.5rem; color: var(--text-dim);">${text}</td></tr>`;
+  if (themeLinks.length === 0) {
+    body.innerHTML = emptyRow("종목-테마 데이터가 없습니다. <code>python3 getStockThemes.py</code> 로 만듭니다.");
+    return;
+  }
+
+  const byCode = {};
+  rows.forEach(d => { byCode[d.종목코드] = d; });
+  const themes = {};
+  themeLinks.forEach(l => {
+    const size = Number(l.대상종목수);
+    // 우선주(보통주 테마를 물려받은 종목)는 같은 회사를 두 번 세게 되므로 뺀다
+    if (l.물려받음 || size < JOURNAL_THEME_MIN_STOCKS || size >= JOURNAL_THEME_MAX_STOCKS || !byCode[l.종목코드]) return;
+    (themes[l.테마번호] = themes[l.테마번호] || { name: l.테마명, list: [] }).list.push(byCode[l.종목코드]);
+  });
+
+  const signed = n => `${n > 0 ? "+" : ""}${n}`;
+  const ranked = Object.values(themes)
+    .filter(t => t.list.length >= JOURNAL_THEME_MIN_STOCKS)
+    .map(t => ({
+      ...t,
+      strong: t.list.filter(d => d.강한마감 === "O").sort((a, b) => b.chg - a.chg),
+      avg: t.list.reduce((sum, d) => sum + d.chg, 0) / t.list.length
+    }))
+    .sort((a, b) => (b.strong.length - a.strong.length) || (b.avg - a.avg))
+    .slice(0, JOURNAL_THEME_ROWS);
+
+  body.innerHTML = ranked.map(t => {
+    const pass = t.list.filter(d => d.추세통과 === "O").length;
+    const passDiff = pass - t.list.filter(d => d.전일통과 === "O").length;
+    return `<tr>
+      <td>${themeChip("theme", t.name)}</td>
+      <td>${t.list.length}</td>
+      <td>${t.strong.length ? `<strong>${t.strong.length}</strong>` : "-"}</td>
+      <td><strong style="color: ${percentColor(t.avg)};">${formatSignedPercent(t.avg)}</strong></td>
+      <td>${t.list.filter(d => d.chg > 0).length} / ${t.list.filter(d => d.chg < 0).length}</td>
+      <td>${pass}${hasPrev ? ` <span style="color: ${percentColor(passDiff)};">(${signed(passDiff)})</span>` : ""}</td>
+      <td>${t.strong.length ? t.strong.map(d => `${escapeHtml(d.종목명)} <strong style="color: ${percentColor(d.chg)};">${d.등락률}</strong>`).join(", ") : "-"}</td>
+    </tr>`;
+  }).join("") || emptyRow("셀 수 있는 테마가 없습니다.");
 }
 
 function renderJournalVirtual() {
@@ -893,6 +976,127 @@ function renderVirtualHistory() {
 /**
  * 8. 필터링 및 데이터 테이블 렌더링
  */
+/**
+ * 6-3. 종목-테마: getStockThemes.py 가 만든 연결 파일을 종목별·테마별 목록으로 보여 준다 (날짜와 관계없음)
+ */
+function parseCsvRows(csvText) {
+  return Papa.parse(csvText, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: h => (h ? h.replace(/^\ufeff/, '').trim() : '')
+  }).data || [];
+}
+
+function loadThemeMatrix() {
+  Promise.all([
+    fetchLocalFile("data/stock_theme_matrix.csv"),
+    fetchLocalFile("data/etf_top_stocks.csv")
+  ]).then(([linkText, stockText]) => {
+    themeLinks = parseCsvRows(linkText).filter(row => row.종목코드 && row.테마번호);
+    themeTargetStocks = parseCsvRows(stockText).filter(row => row.종목코드);
+    renderThemeView();
+    renderJournalView();
+  }).catch(() => { themeLinks = []; themeTargetStocks = []; renderThemeView(); });
+}
+
+function escapeHtml(text) {
+  return String(text ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+
+function setThemeMode(mode, query = "") {
+  themeMode = mode;
+  document.getElementById("themeSearchInput").value = query;
+  renderThemeView();
+}
+
+function themeChip(mode, label, count) {
+  return `<button type="button" class="theme-chip" data-mode="${mode}" data-query="${escapeHtml(label)}">${escapeHtml(label)}${count ? ` <span>${count}</span>` : ""}</button>`;
+}
+
+function renderThemeView() {
+  const head = document.getElementById("themeHead");
+  const body = document.getElementById("themeBody");
+  if (!head || !body) return;
+
+  const searchInput = document.getElementById("themeSearchInput");
+  const query = searchInput.value.trim().toLowerCase();
+  const sizeLimit = document.getElementById("themeSizeFilter").value;
+  const isStockMode = themeMode === "stock";
+  saveViewState("themeMode", themeMode);
+  saveViewState("themeQuery", searchInput.value);
+  saveViewState("themeSize", sizeLimit);
+
+  document.getElementById("themeModeStock").classList.toggle("active", isStockMode);
+  document.getElementById("themeModeTheme").classList.toggle("active", !isStockMode);
+  searchInput.placeholder = isStockMode ? "종목명·코드 검색" : "테마명 검색";
+
+  if (themeLinks.length === 0) {
+    head.innerHTML = "";
+    body.innerHTML = `<tr><td style="text-align: center; padding: 2rem; color: var(--text-dim);">종목-테마 데이터가 없습니다. <code>python3 getStockThemes.py</code> 로 만듭니다.</td></tr>`;
+    document.getElementById("themeRowCount").innerText = "0";
+    return;
+  }
+
+  const links = themeLinks.filter(l => sizeLimit === "ALL" || Number(l.대상종목수) < Number(sizeLimit));
+  document.getElementById("themeDataInfo").innerText =
+    `테마 ${new Set(themeLinks.map(l => l.테마번호)).size}개, 연결 ${themeLinks.length.toLocaleString()}개`;
+
+  let html = "";
+  let count = 0;
+  if (isStockMode) {
+    head.innerHTML = `<tr><th>코드</th><th>종목명</th><th>섹터</th><th>네이버</th><th title="가리지 않은 테마 수">테마 수</th><th title="좁은 테마(네이버 전체 종목 수가 적은 테마)부터. 숫자는 그 테마에 들어 있는 대상 종목 수">테마</th></tr>`;
+    const byStock = {};
+    links.forEach(l => (byStock[l.종목코드] = byStock[l.종목코드] || []).push(l));
+    themeTargetStocks
+      .filter(s => !query || s.종목명.toLowerCase().includes(query) || s.종목코드.includes(query))
+      .forEach(s => {
+        const list = byStock[s.종목코드] || [];
+        const inherited = list.length && list[0].물려받음 ? ` <span class="theme-inherited" title="우선주라서 보통주(${list[0].물려받음})의 테마를 물려받았습니다.">보통주 기준</span>` : "";
+        html += `<tr>
+          <td><code class="stock-code-clickable" onclick="openStockDetail('${s.종목코드}')">${s.종목코드}</code></td>
+          <td><strong class="stock-name-clickable" onclick="openStockDetail('${s.종목코드}')">${escapeHtml(s.종목명)}</strong>${inherited}</td>
+          <td>${escapeHtml(s.섹터 || "-")}</td>
+          <td><a href="${s.상세페이지 || `https://stock.naver.com/domestic/stock/${s.종목코드}/price`}" target="_blank" class="link-naver">네이버 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:0.75rem;"></i></a></td>
+          <td>${list.length}</td>
+          <td>${list.length ? list.map(l => themeChip("theme", l.테마명, l.대상종목수)).join("") : '<span style="color: var(--text-dim);">테마 없음</span>'}</td>
+        </tr>`;
+        count++;
+      });
+  } else {
+    head.innerHTML = `<tr><th>테마</th><th title="이 테마에 들어 있는 대상 종목 수">대상 종목</th><th title="네이버가 이 테마에 넣은 전체 종목 수">네이버 전체</th><th title="숫자는 그 종목이 들어 있는 테마 수">종목</th></tr>`;
+    const byTheme = {};
+    links.forEach(l => {
+      if (!byTheme[l.테마번호]) byTheme[l.테마번호] = { name: l.테마명, total: Number(l.테마종목수), stocks: [] };
+      byTheme[l.테마번호].stocks.push(l);
+    });
+    Object.values(byTheme)
+      .filter(t => !query || t.name.toLowerCase().includes(query))
+      .sort((a, b) => (b.stocks.length - a.stocks.length) || a.name.localeCompare(b.name))
+      .forEach(t => {
+        html += `<tr>
+          <td><strong>${escapeHtml(t.name)}</strong></td>
+          <td><strong>${t.stocks.length}</strong></td>
+          <td>${t.total}</td>
+          <td>${t.stocks.map(l => themeChip("stock", l.종목명, l.종목테마수)).join("")}</td>
+        </tr>`;
+        count++;
+      });
+  }
+
+  body.innerHTML = html || `<tr><td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-dim);">찾는 ${isStockMode ? "종목" : "테마"}이 없습니다.</td></tr>`;
+  document.getElementById("themeRowCount").innerText = count.toLocaleString();
+}
+
+// 이름표를 누르면 반대쪽 목록에서 그 이름으로 찾는다
+document.addEventListener("click", (e) => {
+  const chip = e.target.closest(".theme-chip");
+  if (!chip) return;
+  themeMode = chip.dataset.mode;
+  document.getElementById("themeSearchInput").value = chip.dataset.query;
+  switchView("themes"); // 하루 일지의 테마 이름표에서도 넘어온다
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
 function applyFiltersAndRenderTable() {
   filteredStockData = allStockData.filter(item => {
     // 1-2. Buy signal filter (매수신호 열이 없는 예전 리포트는 A/B/C 어느 것에도 해당하지 않는다)
@@ -1147,7 +1351,8 @@ window.addEventListener("popstate", (e) => {
 function switchView(viewName) {
   document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-  if (['dashboard', 'sector', 'leaders', 'journal', 'virtual'].includes(viewName)) lastListView = viewName;
+  if (['dashboard', 'sector', 'leaders', 'journal', 'themes', 'virtual'].includes(viewName)) lastListView = viewName;
+  if (viewName !== 'stockDetail') saveViewState("view", viewName);
 
   if (viewName === 'dashboard') {
     document.getElementById("viewDashboard").classList.add("active");
@@ -1162,6 +1367,10 @@ function switchView(viewName) {
     document.getElementById("viewJournal").classList.add("active");
     document.getElementById("navBtnJournal").classList.add("active");
     renderJournalView();
+  } else if (viewName === 'themes') {
+    document.getElementById("viewThemes").classList.add("active");
+    document.getElementById("navBtnThemes").classList.add("active");
+    renderThemeView();
   } else if (viewName === 'virtual') {
     document.getElementById("viewVirtual").classList.add("active");
     document.getElementById("navBtnVirtual").classList.add("active");

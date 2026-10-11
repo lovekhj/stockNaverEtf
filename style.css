@@ -775,6 +775,20 @@ body {
 .concept-steps li { margin-bottom: 0.3rem; }
 .concept-steps li span { display: block; color: var(--text-muted); font-size: 0.84rem; }
 .concept-note { color: var(--text-muted); font-size: 0.84rem; margin: 0; }
+
+/* 종목-테마 */
+.theme-table th { cursor: default; }
+.theme-table td { vertical-align: top; }
+.theme-table td:last-child { white-space: normal; min-width: 320px; }
+.theme-mode-group { display: inline-flex; border: 1px solid var(--panel-border); border-radius: 10px; overflow: hidden; }
+.theme-mode-btn { padding: 0.55rem 1rem; border: none; background: var(--panel-bg); color: var(--text-muted); font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: var(--transition-fast); }
+.theme-mode-btn.active { background: var(--primary-accent); color: #ffffff; }
+.theme-search-btn { padding: 0.55rem 1.1rem; border: none; border-radius: 10px; background: var(--primary-accent); color: #ffffff; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: var(--transition-fast); }
+.theme-search-btn:hover { filter: brightness(0.93); }
+.theme-chip { display: inline-block; margin: 0 0.3rem 0.3rem 0; padding: 0.2rem 0.55rem; border-radius: 999px; border: 1px solid var(--panel-border); background: var(--surface-soft); color: var(--text-main); font-size: 0.78rem; cursor: pointer; transition: var(--transition-fast); }
+.theme-chip:hover { border-color: var(--primary-accent); background: var(--table-hover); }
+.theme-chip span { color: var(--text-dim); font-size: 0.72rem; }
+.theme-inherited { margin-left: 0.35rem; color: var(--text-dim); font-size: 0.72rem; font-weight: 400; }
 .rules-table th { cursor: default; }
 .rules-table td { white-space: normal; }
 .rules-table td:first-child { white-space: nowrap; width: 140px; }
