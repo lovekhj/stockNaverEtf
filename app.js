@@ -31,9 +31,11 @@ const CANDLE_TYPES = [
 ];
 
 // Filter States - Defaults: 모든 필터 "전체"
+const DEFAULT_TREND_FILTER = "ALL";
 const DEFAULT_SIGNAL_FILTER = "ALL";
 const DEFAULT_CANDLE_FILTER = CANDLE_TYPES.map(c => c.id);
 
+let currentTrendFilter = DEFAULT_TREND_FILTER;
 let currentSignalFilter = DEFAULT_SIGNAL_FILTER;
 let currentCandleFilter = [...DEFAULT_CANDLE_FILTER];
 let currentSearchQuery = "";
@@ -424,10 +426,22 @@ function loadDashboardData(dateStr) {
 }
 
 /**
- * 4-1. 필터 콤보박스(매수신호 / 캔들) 옵션별 실시간 개수 갱신
+ * 4-1. 필터 콤보박스(추세추종 / 매수신호 / 캔들) 옵션별 실시간 개수 갱신
  */
 function updateFilterCounts() {
   const total = allStockData.length;
+  // Update Trend Following (A+) Select Combobox Options with Live Counts
+  const trendSelect = document.getElementById("trendSelectFilter");
+  if (trendSelect) {
+    const aplusCount = allStockData.filter(isAplusRow).length;
+    trendSelect.innerHTML = `
+      <option value="ALL">전체 추세추종 (${total.toLocaleString()}개)</option>
+      <option value="A+">A+ (${aplusCount.toLocaleString()}개)</option>
+      <option value="NONE">A+ 아님 (${(total - aplusCount).toLocaleString()}개)</option>
+    `;
+    trendSelect.value = currentTrendFilter;
+  }
+
   // Update Buy Signal Select Combobox Options with Live Counts
   const signalSelect = document.getElementById("signalSelectFilter");
   if (signalSelect) {
@@ -1205,6 +1219,9 @@ document.addEventListener("click", (e) => {
 
 function applyFiltersAndRenderTable() {
   filteredStockData = allStockData.filter(item => {
+    // 1-1. Trend following filter (A+ = 종가가 20일선 위 + 정배열, isAplusRow)
+    if (currentTrendFilter !== "ALL" && isAplusRow(item) !== (currentTrendFilter === "A+")) return false;
+
     // 1-2. Buy signal filter (매수신호 열이 없는 예전 리포트는 A/B/C 어느 것에도 해당하지 않는다)
     if (currentSignalFilter !== "ALL" && !(item.매수신호 || "").startsWith(currentSignalFilter)) return false;
 
@@ -1236,7 +1253,11 @@ function applyFiltersAndRenderTable() {
   filteredStockData.sort((a, b) => {
     let valA, valB;
 
-    if (sortKey === "매수신호") {
+    if (sortKey === "추세추종") {
+      // A+ -> 그 밖
+      valA = isAplusRow(a) ? 1 : 2;
+      valB = isAplusRow(b) ? 1 : 2;
+    } else if (sortKey === "매수신호") {
       // A(매수) -> B(재검토) -> C(매수금지) -> 신호 없음(-) 순
       const signalRank = (sig) => ({ "A": 1, "B": 2, "C": 3 }[(sig || "").charAt(0)] || 4);
       valA = signalRank(a.매수신호);
@@ -1286,7 +1307,7 @@ function renderTableRows() {
   const pageRows = filteredStockData.slice(startIndex, startIndex + pageSize);
 
   if (pageRows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align: center; padding: 2rem; color: var(--text-dim);">검색 및 필터 조건에 부합하는 종목이 없습니다.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="13" style="text-align: center; padding: 2rem; color: var(--text-dim);">검색 및 필터 조건에 부합하는 종목이 없습니다.</td></tr>`;
     return;
   }
 
@@ -1319,6 +1340,7 @@ function renderTableRows() {
       <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
       <td>${row.시장 || "-"}</td>
       <td><span class="stock-sector-tag">${row.섹터}</span></td>
+      <td>${isAplusRow(row) ? `<span class="badge-signal signal-buy">A+</span>` : `<span class="badge-signal signal-none">-</span>`}</td>
       <td title="${buyReason}"><span class="badge-signal ${buySignalClass}">${buySignal}</span>${buyReason ? `<div class="signal-reason">${buyReason}</div>` : ""}</td>
       <td>${row.추세통과 === "O" ? "🟢 O" : (row.추세통과 === "X" ? "🔴 X" : "-")}</td>
       <td><strong style="color: ${percentColor(parsePercent(row["3개월수익률"]))};">${row["3개월수익률"] || "-"}</strong></td>
@@ -1358,6 +1380,14 @@ function renderPagination() {
 /**
  * 11. 이벤트 핸들러 함수들
  */
+function handleTrendSelectChange() {
+  const select = document.getElementById("trendSelectFilter");
+  if (!select) return;
+  currentTrendFilter = select.value;
+  currentPage = 1;
+  applyFiltersAndRenderTable();
+}
+
 function handleSignalSelectChange() {
   const select = document.getElementById("signalSelectFilter");
   if (!select) return;
@@ -1419,6 +1449,7 @@ function executeSearchQuery() {
 }
 
 function goHome() {
+  currentTrendFilter = DEFAULT_TREND_FILTER;
   currentSignalFilter = DEFAULT_SIGNAL_FILTER;
   currentCandleFilter = [...DEFAULT_CANDLE_FILTER];
   currentSearchQuery = "";

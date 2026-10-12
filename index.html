@@ -178,7 +178,7 @@
             <div class="section-header table-header-flex">
               <div>
                 <h2><i class="fa-solid fa-magnifying-glass"></i> 전체 종목 검색</h2>
-                <p class="section-desc">섹터와 관계없이 종목명·코드로 찾거나 매수신호로 걸러 봅니다. 네이버 증권 일봉(수정주가), 기준일 장 마감 확정치</p>
+                <p class="section-desc">섹터와 관계없이 종목명·코드로 찾거나 추세추종(A+)·매수신호로 걸러 봅니다. 네이버 증권 일봉(수정주가), 기준일 장 마감 확정치</p>
               </div>
             </div>
             
@@ -186,6 +186,13 @@
             <div class="table-toolbar" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between; background: rgba(0, 0, 0, 0.03); padding: 0.85rem 1rem; border-radius: 12px; margin-bottom: 1rem;">
               <div class="filter-controls-group" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; width: 100%;">
                 
+                <!-- 1-1. Trend Following (추세추종 A+) Filter Combobox -->
+                <select id="trendSelectFilter" class="grade-combobox-select" onchange="handleTrendSelectChange()" title="종가가 20일선 위이고 정배열(5일 ≥ 20일 ≥ 60일 ≥ 120일)이면 A+. 검증에서 우위가 없었던 참고용 기준입니다.">
+                  <option value="ALL" selected>전체 추세추종 (0개)</option>
+                  <option value="A+">A+ (0개)</option>
+                  <option value="NONE">A+ 아님 (0개)</option>
+                </select>
+
                 <!-- 1-2. Buy Signal (매수신호) Filter Combobox -->
                 <select id="signalSelectFilter" class="grade-combobox-select" onchange="handleSignalSelectChange()" title="강한 마감 + 추세 통과 후보 규칙. 기준일 종가 매수 기준이며 검증 중입니다.">
                   <option value="ALL" selected>전체 매수신호 (0개)</option>
@@ -237,6 +244,7 @@
                     <th onclick="sortTable('종목명')">종목명 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('시장')">시장 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('섹터')">섹터 <i class="fa-solid fa-sort"></i></th>
+                    <th onclick="sortTable('추세추종')" title="종가가 20일선 위이고 정배열(5일 ≥ 20일 ≥ 60일 ≥ 120일)이면 A+. 검증에서 우위가 없었던 참고용 기준입니다.">추세추종 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('매수신호')" title="강한 마감 + 추세 통과 후보 규칙. 기준일 종가 매수 기준이며 검증 중입니다.">매수신호 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('추세통과')" title="종가가 60일선 위, 60일선 상승, 1년 최고 종가의 -15% 이내">통과 <i class="fa-solid fa-sort"></i></th>
                     <th onclick="sortTable('3개월수익률')" title="60거래일 전 종가 대비">3개월 <i class="fa-solid fa-sort"></i></th>
