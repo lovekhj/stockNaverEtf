@@ -917,7 +917,8 @@
   </div>
 
   <!-- Custom JS -->
-  <script src="reports/available_dates.js"></script>
+  <!-- 날짜 목록은 브라우저 캐시를 쓰지 않는다 (푸시 직후에도 그날 날짜가 바로 보이도록) -->
+  <script>document.write('<script src="reports/available_dates.js?v=' + Date.now() + '"><\/script>');</script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -254,7 +254,8 @@ function fetchLocalFile(path) {
         return;
       }
       const targetPath = tryPaths[attempt++];
-      fetch(targetPath)
+      // 브라우저 캐시를 쓰지 않는다 (푸시 직후에도 그날 리포트와 장부가 바로 보이도록)
+      fetch(targetPath, { cache: "no-store" })
         .then(res => {
           if (res.ok || res.status === 0) return res.text();
           throw new Error("NOT_FOUND");
