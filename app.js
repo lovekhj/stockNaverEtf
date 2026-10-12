@@ -40,6 +40,7 @@ let currentSearchQuery = "";
 let selectedSector = null; // 섹터별 종목조회 화면에서 고른 섹터
 let lastListView = "sector"; // 종목 상세나 날짜 선택 뒤에 돌아갈 목록 화면 (sector, leaders, journal, dashboard, themes, virtual)
 let virtualTrades = [];      // 가상 주식거래 장부 (reports/virtual_trades.csv) 전체
+let aplusByDate = null;      // A+ 등급 화면: 날짜별 A+ 종목 ({날짜: [종목]}). 화면을 처음 열 때 읽는다
 let selectedVirtualCode = null; // 가상 주식거래 화면에서 일별 기록을 보려고 고른 종목
 let themeLinks = [];         // 종목-테마 연결 (data/stock_theme_matrix.csv), 한 줄에 연결 하나
 let themeTargetStocks = [];  // 대상 종목 전체 (data/etf_top_stocks.csv). 테마 없는 종목도 보여 주려고 읽는다
@@ -49,6 +50,9 @@ let themeMode = "stock";     // 종목-테마 화면의 보기 방식 (stock = �
 const JOURNAL_THEME_MIN_STOCKS = 3;
 const JOURNAL_THEME_MAX_STOCKS = 30;
 const JOURNAL_THEME_ROWS = 15;
+
+// A+ 등급 화면: 최근 며칠 치 리포트까지 읽을지 (날짜마다 리포트 CSV를 하나씩 받는다)
+const APLUS_MAX_DATES = 20;
 
 // Pagination State
 let currentPage = 1;
@@ -97,7 +101,7 @@ function restoreViewState() {
   if ([...sizeFilter.options].some(o => o.value === savedSize)) sizeFilter.value = savedSize;
 
   const savedView = readViewState("view");
-  if (['dashboard', 'sector', 'leaders', 'journal', 'themes', 'virtual', 'rules'].includes(savedView)) switchView(savedView);
+  if (['aplus', 'dashboard', 'sector', 'leaders', 'journal', 'themes', 'virtual', 'rules'].includes(savedView)) switchView(savedView);
 }
 
 /**
@@ -865,6 +869,107 @@ function loadVirtualTrades() {
     .catch(() => { virtualTrades = []; renderVirtualView(); });
 }
 
+/**
+ * 6-3. A+ 등급 화면: 최근 리포트를 날짜별로 읽어 A+ 종목(20일선 위 + 정배열)만 보여 준다
+ * 예전 투자등급 A+의 세 조건 중 쌍끌이(외국인·기관 동시 순매수)는 수급을 수집하지 않아 뺐다
+ */
+function isAplusRow(row) {
+  const toNum = text => Number(String(text || "").replace(/,/g, "")) || 0;
+  const [price, ma5, ma20, ma60, ma120] = ["현재가", "MA5", "MA20", "MA60", "MA120"].map(key => toNum(row[key]));
+  if (!(price > 0 && ma5 > 0 && ma20 > 0 && ma60 > 0 && ma120 > 0)) return false;
+  return price >= ma20 && ma5 >= ma20 && ma20 >= ma60 && ma60 >= ma120;
+}
+
+function loadAplusHistory() {
+  const dates = [...availableDates].sort((a, b) => b.localeCompare(a)).slice(0, APLUS_MAX_DATES);
+  const loadOne = dateStr => fetchLocalFile(`reports/report_${dateStr}.csv`)
+    .then(csvText => new Promise(resolve => {
+      Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: h => (h ? h.replace(/^\ufeff/, '').trim() : ''),
+        complete: results => resolve([dateStr, (results.data || []).filter(row => row.종목코드 && isAplusRow(row))])
+      });
+    }))
+    .catch(() => [dateStr, null]);
+
+  return Promise.all(dates.map(loadOne)).then(pairs => {
+    aplusByDate = {};
+    pairs.forEach(([dateStr, rows]) => { if (rows) aplusByDate[dateStr] = rows; });
+  });
+}
+
+function renderAplusView() {
+  const body = document.getElementById("aplusBody");
+  if (!body) return;
+
+  if (aplusByDate === null) {
+    body.innerHTML = `<div class="section-card" style="text-align: center; color: var(--text-dim);">불러오는 중입니다...</div>`;
+    loadAplusHistory().then(renderAplusView);
+    return;
+  }
+
+  const dates = Object.keys(aplusByDate).sort((a, b) => b.localeCompare(a));
+  if (dates.length === 0) {
+    body.innerHTML = `<div class="section-card" style="text-align: center; color: var(--text-dim);">읽을 수 있는 리포트가 없습니다.</div>`;
+    return;
+  }
+
+  body.innerHTML = dates.map((dateStr, idx) => {
+    // 신규: 바로 앞 날짜(읽어 온 것 중)에는 A+가 아니었던 종목. 가장 오래된 날짜는 비교할 날이 없어 표시하지 않는다
+    const prevDate = dates[idx + 1];
+    const prevCodes = prevDate ? new Set(aplusByDate[prevDate].map(row => row.종목코드)) : null;
+    const rows = [...aplusByDate[dateStr]].sort((a, b) => (parsePercent(b["3개월수익률"]) ?? -Infinity) - (parsePercent(a["3개월수익률"]) ?? -Infinity));
+    const newCount = prevCodes ? rows.filter(row => !prevCodes.has(row.종목코드)).length : null;
+    const dateLabel = `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
+
+    const rowsHtml = rows.map((row, i) => {
+      const isNew = prevCodes && !prevCodes.has(row.종목코드);
+      const signal = row.매수신호 || "-";
+      const signalClass = signal.startsWith("A") ? "signal-buy" : signal.startsWith("B") ? "signal-review" : signal.startsWith("C") ? "signal-avoid" : "signal-none";
+      const link = /^https?:\/\//.test(row.상세페이지 || "") ? row.상세페이지.trim() : "";
+      const name = escapeHtml(row.종목명);
+      return `
+        <tr>
+          <td>${i + 1}</td>
+          <td><code>${escapeHtml(row.종목코드)}</code></td>
+          <td><strong>${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noopener" style="color: inherit;">${name}</a>` : name}</strong>${isNew ? ` <span class="badge-signal signal-buy">신규</span>` : ""}</td>
+          <td>${escapeHtml(row.시장 || "-")}</td>
+          <td><span class="stock-sector-tag">${escapeHtml(row.섹터 || "-")}</span></td>
+          <td>${escapeHtml(row.현재가 || "-")}원</td>
+          <td><strong style="color: ${percentColor(parsePercent(row.등락률))};">${escapeHtml(row.등락률 || "-")}</strong></td>
+          <td>${escapeHtml(row["20일이격도"] || "-")}</td>
+          <td><strong style="color: ${percentColor(parsePercent(row["3개월수익률"]))};">${escapeHtml(row["3개월수익률"] || "-")}</strong></td>
+          <td>${escapeHtml(row.고점대비 || "-")}</td>
+          <td><span class="badge-signal ${signalClass}">${escapeHtml(signal)}</span></td>
+        </tr>`;
+    }).join("");
+
+    return `
+      <div class="section-card">
+        <div class="section-header">
+          <div>
+            <h2><i class="fa-solid fa-calendar-day"></i> ${dateLabel}</h2>
+            <p class="section-desc">A+ ${rows.length}개${newCount === null ? "" : ` · 신규 ${newCount}개`}</p>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th><th>코드</th><th>종목명</th><th>시장</th><th>섹터</th><th>종가</th><th>등락률</th>
+                <th>20일 이격도</th><th>3개월 수익률</th><th title="1년 고점 대비">고점 대비</th><th>매수신호</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml || `<tr><td colspan="11" style="text-align: center; padding: 2rem; color: var(--text-dim);">이 날짜에는 A+ 종목이 없습니다.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join("");
+}
+
 function formatWon(value) {
   return `${Math.round(value).toLocaleString()}원`;
 }
@@ -1352,10 +1457,14 @@ window.addEventListener("popstate", (e) => {
 function switchView(viewName) {
   document.querySelectorAll(".view-panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-  if (['dashboard', 'sector', 'leaders', 'journal', 'themes', 'virtual'].includes(viewName)) lastListView = viewName;
+  if (['aplus', 'dashboard', 'sector', 'leaders', 'journal', 'themes', 'virtual'].includes(viewName)) lastListView = viewName;
   if (viewName !== 'stockDetail') saveViewState("view", viewName);
 
-  if (viewName === 'dashboard') {
+  if (viewName === 'aplus') {
+    document.getElementById("viewAplus").classList.add("active");
+    document.getElementById("navBtnAplus").classList.add("active");
+    renderAplusView();
+  } else if (viewName === 'dashboard') {
     document.getElementById("viewDashboard").classList.add("active");
     document.getElementById("navBtnMain").classList.add("active");
   } else if (viewName === 'sector') {

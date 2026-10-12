@@ -54,6 +54,10 @@
         <div class="lnb-section">
           <h3 class="lnb-title"><i class="fa-solid fa-compass"></i> 대시보드</h3>
           <nav class="lnb-nav">
+            <button class="nav-btn" id="navBtnAplus" onclick="switchView('aplus')">
+              <i class="fa-solid fa-medal"></i>
+              <span>A+ 등급 (날짜별)</span>
+            </button>
             <button class="nav-btn active" id="navBtnSector" onclick="switchView('sector')">
               <i class="fa-solid fa-ranking-star"></i>
               <span>섹터별 종목조회</span>
@@ -147,6 +151,25 @@
       <!-- Main Content Area -->
       <main class="main-content">
         
+        <!-- View: A+ 등급 (날짜별 20일선 위 + 정배열 종목) -->
+        <section id="viewAplus" class="view-panel">
+          <div class="section-card">
+            <div class="section-header">
+              <div>
+                <h2><i class="fa-solid fa-medal"></i> A+ 등급 (날짜별)</h2>
+                <p class="section-desc">종가가 20일선 위이고 이평선이 정배열(5일 ≥ 20일 ≥ 60일 ≥ 120일)인 종목을 날짜별로 보여 줍니다. 네이버 증권 일봉(수정주가), 장 마감 후 확정치</p>
+              </div>
+            </div>
+            <p class="concept-note">
+              예전 A+ 등급의 세 조건 중 외국인·기관 동시 순매수(쌍끌이)는 수급을 수집하지 않아 뺐습니다. 그래서 예전 A+보다 종목이 많습니다.<br>
+              과거 검증에서 A+ 등급은 다른 등급보다 이후 수익률이 높지 않았습니다. 참고용이며 매수·매도 추천이 아닙니다.
+            </p>
+          </div>
+          <div id="aplusBody">
+            <!-- 날짜별 표는 JS가 채운다 -->
+          </div>
+        </section>
+
         <!-- View 1: 전체 종목 검색 -->
         <section id="viewDashboard" class="view-panel">
           
