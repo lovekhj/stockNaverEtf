@@ -433,11 +433,10 @@ function updateFilterCounts() {
   // Update Trend Following (A+) Select Combobox Options with Live Counts
   const trendSelect = document.getElementById("trendSelectFilter");
   if (trendSelect) {
-    const aplusCount = allStockData.filter(isAplusRow).length;
+    const gradeCount = (grade) => allStockData.filter(d => d.추세추종 === grade).length;
     trendSelect.innerHTML = `
       <option value="ALL">전체 추세추종 (${total.toLocaleString()}개)</option>
-      <option value="A+">A+ (${aplusCount.toLocaleString()}개)</option>
-      <option value="NONE">A+ 아님 (${(total - aplusCount).toLocaleString()}개)</option>
+      ${["A+", "A", "B", "C"].map(g => `<option value="${g}">${g} (${gradeCount(g).toLocaleString()}개)</option>`).join("")}
     `;
     trendSelect.value = currentTrendFilter;
   }
@@ -884,14 +883,11 @@ function loadVirtualTrades() {
 }
 
 /**
- * 6-3. A+ 등급 화면: 최근 리포트를 날짜별로 읽어 A+ 종목(20일선 위 + 정배열)만 보여 준다
- * 예전 투자등급 A+의 세 조건 중 쌍끌이(외국인·기관 동시 순매수)는 수급을 수집하지 않아 뺐다
+ * 6-3. A+ 등급 화면: 최근 리포트를 날짜별로 읽어 추세추종 A+ 종목(쌍끌이 + 20일선 위 + 정배열)만 보여 준다
+ * 등급은 4단계(getEtfInvestorFlow.py의 calculate_grade)가 리포트의 추세추종 열에 적는다
  */
 function isAplusRow(row) {
-  const toNum = text => Number(String(text || "").replace(/,/g, "")) || 0;
-  const [price, ma5, ma20, ma60, ma120] = ["현재가", "MA5", "MA20", "MA60", "MA120"].map(key => toNum(row[key]));
-  if (!(price > 0 && ma5 > 0 && ma20 > 0 && ma60 > 0 && ma120 > 0)) return false;
-  return price >= ma20 && ma5 >= ma20 && ma20 >= ma60 && ma60 >= ma120;
+  return row.추세추종 === "A+";
 }
 
 function loadAplusHistory() {
@@ -1219,8 +1215,8 @@ document.addEventListener("click", (e) => {
 
 function applyFiltersAndRenderTable() {
   filteredStockData = allStockData.filter(item => {
-    // 1-1. Trend following filter (A+ = 종가가 20일선 위 + 정배열, isAplusRow)
-    if (currentTrendFilter !== "ALL" && isAplusRow(item) !== (currentTrendFilter === "A+")) return false;
+    // 1-1. Trend following filter (추세추종 열이 없는 예전 리포트는 어느 등급에도 해당하지 않는다)
+    if (currentTrendFilter !== "ALL" && item.추세추종 !== currentTrendFilter) return false;
 
     // 1-2. Buy signal filter (매수신호 열이 없는 예전 리포트는 A/B/C 어느 것에도 해당하지 않는다)
     if (currentSignalFilter !== "ALL" && !(item.매수신호 || "").startsWith(currentSignalFilter)) return false;
@@ -1254,9 +1250,10 @@ function applyFiltersAndRenderTable() {
     let valA, valB;
 
     if (sortKey === "추세추종") {
-      // A+ -> 그 밖
-      valA = isAplusRow(a) ? 1 : 2;
-      valB = isAplusRow(b) ? 1 : 2;
+      // A+ -> A -> B -> C -> 등급 없음(-) 순
+      const gradeRank = (grade) => ({ "A+": 1, "A": 2, "B": 3, "C": 4 }[grade] || 5);
+      valA = gradeRank(a.추세추종);
+      valB = gradeRank(b.추세추종);
     } else if (sortKey === "매수신호") {
       // A(매수) -> B(재검토) -> C(매수금지) -> 신호 없음(-) 순
       const signalRank = (sig) => ({ "A": 1, "B": 2, "C": 3 }[(sig || "").charAt(0)] || 4);
@@ -1340,7 +1337,7 @@ function renderTableRows() {
       <td><strong class="stock-name-clickable" onclick="openStockDetail('${row.종목코드}')">${row.종목명}</strong></td>
       <td>${row.시장 || "-"}</td>
       <td><span class="stock-sector-tag">${row.섹터}</span></td>
-      <td>${isAplusRow(row) ? `<span class="badge-signal signal-buy">A+</span>` : `<span class="badge-signal signal-none">-</span>`}</td>
+      <td title="쌍끌이 ${row.쌍끌이 || "-"} (외국인 연속 순매수 ${row.외국인연속매수 || "-"}일, 기관 ${row.기관연속매수 || "-"}일)"><span class="badge-signal ${{ "A+": "signal-buy", "A": "signal-review", "B": "signal-avoid" }[row.추세추종] || "signal-none"}">${row.추세추종 || "-"}</span></td>
       <td title="${buyReason}"><span class="badge-signal ${buySignalClass}">${buySignal}</span>${buyReason ? `<div class="signal-reason">${buyReason}</div>` : ""}</td>
       <td>${row.추세통과 === "O" ? "🟢 O" : (row.추세통과 === "X" ? "🔴 X" : "-")}</td>
       <td><strong style="color: ${percentColor(parsePercent(row["3개월수익률"]))};">${row["3개월수익률"] || "-"}</strong></td>

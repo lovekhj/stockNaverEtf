@@ -44,12 +44,69 @@ SECTOR_CSV = "data/stock_sectors.csv"   # 종목별 시장·섹터 (네이버 �
 CANDLE_LONG_TAIL = 0.5      # 긴 꼬리: 꼬리가 당일 범위에서 차지하는 비율 하한
 CANDLE_DOJI_BODY = 0.1      # 십자형: 몸통 비율 상한
 CANDLE_LONG_BODY = 0.7      # 장대봉: 몸통 비율 하한
+FLOW_LOOKBACK_DAYS = 10     # 외국인·기관 매매동향을 받는 거래일 수 (연속 순매수 일수는 이 값까지만 센다)
 
 FIELDNAMES = [
-    "종목코드", "종목명", "시장", "섹터", "매수신호", "매수신호사유", "등락률", "현재가",
+    "종목코드", "종목명", "시장", "섹터", "추세추종", "매수신호", "매수신호사유", "등락률", "현재가",
     "20일이격도", "차트꼬리", "추세통과", "전일통과", "3개월수익률", "고점대비", "강한마감", "거래량배수",
-    "MA5", "MA20", "MA60", "MA120", "상세페이지"
+    "MA5", "MA20", "MA60", "MA120", "쌍끌이", "외국인연속매수", "기관연속매수", "상세페이지"
 ]
+
+def parse_quant(quant_str):
+    """
+    네이버 수량 텍스트 (예: '+1,234,567' 또는 '-350,942')를 정수로 바꿉니다.
+    """
+    try:
+        return int(str(quant_str or "0").replace(",", "").replace("+", "").strip())
+    except ValueError:
+        return 0
+
+def fetch_investor_flow(code, target_date):
+    """
+    기준일자까지의 외국인·기관 연속 순매수 일수를 돌려줍니다. (네이버 증권 매매동향, 장 마감 후 확정치)
+
+    :return: (외국인 연속 순매수 일수, 기관 연속 순매수 일수).
+             받지 못했거나 기준일자의 수급이 아직 없으면 None ("순매수 없음"인 0과 구분한다)
+    """
+    url = f"https://m.stock.naver.com/api/stock/{code}/trend?page=1&pageSize={FLOW_LOOKBACK_DAYS}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as res:
+            data = json.loads(res.read().decode("utf-8"))
+    except Exception:
+        return None
+
+    trends = data if isinstance(data, list) else (data.get("result", []) if isinstance(data, dict) else [])
+    # 기준일자 뒤의 날은 버린다 (지난 날짜를 다시 돌릴 때 그날의 값으로 계산하기 위함)
+    trends = [t for t in trends if str(t.get("bizdate", "")).strip() <= target_date]
+    if not trends or str(trends[0].get("bizdate", "")).strip() != target_date:
+        return None
+
+    def streak(key):
+        days = 0
+        for item in trends:
+            if parse_quant(item.get(key)) <= 0:
+                break
+            days += 1
+        return days
+
+    return streak("foreignerPureBuyQuant"), streak("organPureBuyQuant")
+
+def calculate_grade(bi_buying, above_ma20, is_aligned):
+    """
+    추세추종 등급(A+, A, B, C)을 돌려줍니다. 2026-10-10에 없앤 투자등급과 같은 정의입니다.
+    검증에서 등급 순서가 이후 수익률과 맞지 않았던 참고용 기준입니다.
+    """
+    if bi_buying and above_ma20 and is_aligned:
+        return "A+"  # 쌍끌이 + 20일선 위 + 정배열
+    if bi_buying and above_ma20:
+        return "A"   # 쌍끌이 + 20일선 위
+    if bi_buying or above_ma20:
+        return "B"   # 수급 또는 차트 중 하나
+    return "C"
 
 def get_latest_market_bizdate(sample_code="005930"):
     """
@@ -236,6 +293,7 @@ def main():
 
     analyzed_rows = []
     price_failed = []  # 일봉을 받지 못해 결과에서 빠진 종목
+    flow_failed = []   # 수급을 받지 못한 종목 (추세추종 등급은 쌍끌이 아님으로 계산됨)
     start_time = time.time()
 
     # 2. 종목별 일봉 수집과 분석
@@ -256,6 +314,16 @@ def main():
 
         disparity = round(ma_info['current_price'] / ma_info['ma20'] * 100, 1)
 
+        # 추세추종 등급 (쌍끌이 = 외국인과 기관이 기준일자에 함께 순매수)
+        flow = fetch_investor_flow(code, target_date) or fetch_investor_flow(code, target_date)
+        if not flow:
+            flow_failed.append(f"[{code}] {name}")
+        foreign_days, organ_days = flow or (0, 0)
+        bi_buying = foreign_days >= 1 and organ_days >= 1
+        above_ma20 = ma_info["current_price"] >= ma_info["ma20"]
+        is_aligned = ma_info["ma120"] > 0 and ma_info["ma5"] >= ma_info["ma20"] >= ma_info["ma60"] >= ma_info["ma120"]
+        trend_grade = calculate_grade(bi_buying, above_ma20, is_aligned)
+
         # 매수신호 (강한 마감 + 추세 통과 후보 규칙, 기준일자 종가 매수 기준)
         buy_signal, buy_reason = judge_buy_signal(bars, target_date)
 
@@ -268,6 +336,7 @@ def main():
             "종목명": name,
             "시장": market,
             "섹터": sector,
+            "추세추종": trend_grade,
             "매수신호": buy_signal,
             "매수신호사유": buy_reason,
             "등락률": ma_info["chg_rate"],
@@ -279,6 +348,9 @@ def main():
             "MA20": f"{round(ma_info['ma20']):,}",
             "MA60": f"{round(ma_info['ma60']):,}",
             "MA120": f"{round(ma_info['ma120']):,}",
+            "쌍끌이": ("O" if bi_buying else "X") if flow else "-",
+            "외국인연속매수": foreign_days if flow else "-",
+            "기관연속매수": organ_days if flow else "-",
             "상세페이지": s.get("상세페이지", "").strip()
         })
 
@@ -297,12 +369,17 @@ def main():
     buy_rows = [r for r in analyzed_rows if r["매수신호"] == SIGNAL_BUY]
     review_count = sum(1 for r in analyzed_rows if r["매수신호"] == SIGNAL_REVIEW)
     pass_count = sum(1 for r in analyzed_rows if r["추세통과"] == "O")
-    print(f"\n✅ [분석 완료] 총 {len(analyzed_rows)}개 종목 | 추세 통과: {pass_count}개")
+    aplus_count = sum(1 for r in analyzed_rows if r["추세추종"] == "A+")
+    print(f"\n✅ [분석 완료] 총 {len(analyzed_rows)}개 종목 | 추세 통과: {pass_count}개 | 추세추종 A+: {aplus_count}개")
     print(f"🎯 [매수신호] {SIGNAL_BUY}: {len(buy_rows)}개 / {SIGNAL_REVIEW}: {review_count}개 (기준일자 종가 매수 기준, 검증 중인 후보 규칙)")
     for r in buy_rows:
         print(f"   - [{r['종목코드']}] {r['종목명']} {r['현재가']}원 | {r['매수신호사유']}")
     if price_failed:
         print(f"⚠️ [일봉 수집 실패] {len(price_failed)}개 (결과에서 제외): {', '.join(price_failed)}")
+
+    if flow_failed:
+        shown = ", ".join(flow_failed[:10]) + (" ..." if len(flow_failed) > 10 else "")
+        print(f"⚠️ [수급 수집 실패] {len(flow_failed)}개 (쌍끌이 '-', 추세추종 등급은 쌍끌이 아님으로 계산): {shown}")
 
     # 4. `reports/report_YYYYMMDD.csv` 저장
     if save_csv_path:
